@@ -2,23 +2,42 @@ package taxi;
 
 import sensors.Measurement;
 
+import javax.xml.bind.annotation.XmlRootElement;
 import java.util.ArrayList;
 
+@XmlRootElement
 public class TaxiMeasurement {
+    private int id;
+    private int numberOfRides;
     private float km;
     private float battery;
     private ArrayList<Measurement> pollutionMeasurements = new ArrayList<>();
+    private long timestamp;
 
     public TaxiMeasurement() {
     }
 
-    public TaxiMeasurement(float km, float battery, ArrayList<Measurement> pollutionMeasurements) {
+    public TaxiMeasurement(int id, int numberOfRides, float km, float battery, ArrayList<Measurement> pollutionMeasurements, long timestamp) {
         if (km <= 0) {
             throw new IllegalArgumentException("Expected positive distance");
         }
         if (battery < 0 || battery > 100) {
             throw new IllegalArgumentException(("Expected battery level between 0 and 100"));
         }
+        this.id = id;
+        this.numberOfRides = numberOfRides;
+        this.km = km;
+        this.battery = battery;
+        this.pollutionMeasurements = pollutionMeasurements;
+        this.timestamp = timestamp;
+    }
+
+    public int getId() {
+        return id;
+    }
+
+    public int getNumberOfRides() {
+        return numberOfRides;
     }
 
     public float getKm() {
@@ -38,6 +57,18 @@ public class TaxiMeasurement {
         return newMeasurements;
     }
 
+    public long getTimestamp() {
+        return timestamp;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
+    public void setNumberOfRides(int numberOfRides) {
+        this.numberOfRides = numberOfRides;
+    }
+
     public void setKm(float km) {
         this.km = km;
     }
@@ -52,5 +83,9 @@ public class TaxiMeasurement {
                 pollutionMeasurements) {
             this.pollutionMeasurements.add(new Measurement(m.getId(), m.getType(), m.getValue(), m.getTimestamp()));
         }
+    }
+
+    public void setTimestamp(long timestamp) {
+        this.timestamp = timestamp;
     }
 }

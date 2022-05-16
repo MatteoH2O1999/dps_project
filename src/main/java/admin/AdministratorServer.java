@@ -2,6 +2,7 @@ package admin;
 
 import com.sun.net.httpserver.HttpServer;
 import com.sun.jersey.api.container.httpserver.HttpServerFactory;
+import sensors.Measurement;
 import taxi.*;
 
 import javax.ws.rs.*;
@@ -79,23 +80,110 @@ public class AdministratorServer {
     @Produces({"application/xml", "application/json"})
     public Response getTaxis() {
         List<TaxiInfo> taxis = Server.getInstance().getTaxiInfo();
-        return Response.ok(new TaxiList(taxis)).build();
+        if (taxis.size() == 0) {
+            return Response.status(404).build();
+        }
+        int[] taxiIds = new int[taxis.size()];
+        for (int i = 0; i < taxis.size(); i++) {
+            taxiIds[i] = taxis.get(i).getId();
+        }
+        return Response.ok(new TaxiList(taxiIds)).build();
     }
 
     @GET
     @Path("taxis/{id}/{n}")
     @Produces({"application/xml", "application/json"})
     public Response getNMeasurements(@PathParam("id") int taxiId, @PathParam("n") int numberOfMeasurements) {
-        // TODO
-        return null;
+        List<TaxiMeasurement> taxiMeasurements = Server.getInstance().getTaxiMeasurements();
+        taxiMeasurements.removeIf(taxiMeasurement -> taxiMeasurement.getId() != taxiId);
+        taxiMeasurements.sort((o1, o2) -> {
+            long diff = o2.getTimestamp() - o1.getTimestamp();
+            return (int)diff;
+        });
+        if (taxiMeasurements.size() == 0) {
+            return Response.status(404).build();
+        }
+        if (taxiMeasurements.size() >= numberOfMeasurements) {
+            taxiMeasurements = taxiMeasurements.subList(0, numberOfMeasurements - 1);
+        } else {
+            numberOfMeasurements = taxiMeasurements.size();
+        }
+
+        TaxiStats stats = new TaxiStats();
+
+        int numberOfMeasuresInTaxi = 0;
+        float avgRides = 0.0F;
+        float km = 0.0F;
+        float battery = 0.0F;
+        UntimedMeasurement measurement = new UntimedMeasurement();
+
+        for (TaxiMeasurement taxiMeasurement :
+                taxiMeasurements) {
+            avgRides += taxiMeasurement.getNumberOfRides();
+            km += taxiMeasurement.getKm();
+            battery += taxiMeasurement.getBattery();
+            for (Measurement m :
+                    taxiMeasurement.getPollutionMeasurements()) {
+                measurement.setValue(measurement.getValue() + m.getValue());
+                numberOfMeasuresInTaxi++;
+            }
+        }
+        measurement.setValue(measurement.getValue() / numberOfMeasuresInTaxi);
+
+        stats.setKm(km / numberOfMeasurements);
+        stats.setBattery(battery / numberOfMeasurements);
+        stats.setNumberOfRides(avgRides / numberOfMeasurements);
+        stats.setPollutionMeasurement(measurement);
+        stats.setTimestamp(System.currentTimeMillis());
+        return Response.ok(stats).build();
     }
 
     @GET
     @Path("taxis/measurements/{t1}/{t2}")
     @Produces({"application/xml", "application/json"})
     public Response getMeasurementAverage(@PathParam("t1") long startRange, @PathParam("t2") long endRange) {
-        // TODO
-        return null;
+        List<TaxiMeasurement> taxiMeasurements = Server.getInstance().getTaxiMeasurements();
+        taxiMeasurements.removeIf(taxiMeasurement -> taxiMeasurement.getTimestamp() > endRange || taxiMeasurement.getTimestamp() < startRange);
+
+        if (taxiMeasurements.size() == 0) {
+            return Response.status(404).build();
+        }
+
+        TaxiStats stats = new TaxiStats();
+
+        int numberOfMeasurements = 0;
+        float avgRides = 0.0F;
+        float km = 0.0F;
+        float battery = 0.0F;
+        UntimedMeasurement measurement = new UntimedMeasurement();
+
+        for (TaxiMeasurement taxiMeasurement :
+                taxiMeasurements) {
+            avgRides += taxiMeasurement.getNumberOfRides();
+            km += taxiMeasurement.getKm();
+            battery += taxiMeasurement.getBattery();
+            for (Measurement m :
+                    taxiMeasurement.getPollutionMeasurements()) {
+                measurement.setValue(measurement.getValue() + m.getValue());
+                numberOfMeasurements++;
+            }
+        }
+        measurement.setValue(measurement.getValue() / numberOfMeasurements);
+
+        stats.setKm(km / taxiMeasurements.size());
+        stats.setBattery(battery / taxiMeasurements.size());
+        stats.setNumberOfRides(avgRides / taxiMeasurements.size());
+        stats.setPollutionMeasurement(measurement);
+        stats.setTimestamp(System.currentTimeMillis());
+        return Response.ok(stats).build();
+    }
+
+    @POST
+    @Path("measure")
+    @Consumes({"application/xml", "application/json"})
+    public Response addMeasurement(TaxiMeasurement taxiMeasurement) {
+        Server.getInstance().addTaxiMeasurement(taxiMeasurement);
+        return Response.ok().build();
     }
 }
 
@@ -135,6 +223,10 @@ class Server {
         return false;
     }
 
+    public synchronized void addTaxiMeasurement(TaxiMeasurement taxiMeasurement) {
+        this.taxiMeasurements.add(taxiMeasurement);
+    }
+
     public synchronized List<TaxiInfo> getTaxiInfo() {
         ArrayList<TaxiInfo> newInfo = new ArrayList<>();
         for (TaxiInfo info :
@@ -149,7 +241,8 @@ class Server {
         ArrayList<TaxiMeasurement> newMeasurements = new ArrayList<>();
         for (TaxiMeasurement m :
                 this.taxiMeasurements) {
-            TaxiMeasurement newMeasurement = new TaxiMeasurement(m.getKm(), m.getBattery(), m.getPollutionMeasurements());
+            TaxiMeasurement newMeasurement = new TaxiMeasurement(m.getId(), m.getNumberOfRides(), m.getKm(), m.getBattery(), m.getPollutionMeasurements(), m.getTimestamp());
+            newMeasurements.add(newMeasurement);
         }
         return newMeasurements;
     }
@@ -157,21 +250,128 @@ class Server {
 
 @XmlRootElement
 class TaxiList {
-    private List<TaxiInfo> taxis;
+    private int[] taxis;
 
     public TaxiList() {
     }
 
-    public TaxiList(List<TaxiInfo> taxis) {
+    public TaxiList(int[] taxis) {
         this.taxis = taxis;
     }
 
-    public List<TaxiInfo> getTaxis() {
+    public int[] getTaxis() {
         return taxis;
     }
 
-    public void setTaxis(List<TaxiInfo> taxis) {
+    public void setTaxis(int[] taxis) {
         this.taxis = taxis;
+    }
+}
+
+@XmlRootElement
+class TaxiStats {
+    private float numberOfRides;
+    private float km;
+    private float battery;
+    private UntimedMeasurement pollutionMeasurement;
+    private long timestamp;
+
+    public TaxiStats() {
+    }
+
+    public TaxiStats(float numberOfRides, float km, float battery, Measurement pollutionMeasurement) {
+        this.numberOfRides = numberOfRides;
+        this.km = km;
+        this.battery = battery;
+        this.pollutionMeasurement = new UntimedMeasurement(pollutionMeasurement);
+        this.timestamp = System.currentTimeMillis();
+    }
+
+    public TaxiStats(float numberOfRides, float km, float battery, Measurement pollutionMeasurement, long timestamp) {
+        this.numberOfRides = numberOfRides;
+        this.km = km;
+        this.battery = battery;
+        this.pollutionMeasurement = new UntimedMeasurement(pollutionMeasurement);
+        this.timestamp = timestamp;
+    }
+
+    public TaxiStats(float numberOfRides, float km, float battery, UntimedMeasurement pollutionMeasurement) {
+        this.numberOfRides = numberOfRides;
+        this.km = km;
+        this.battery = battery;
+        this.pollutionMeasurement = pollutionMeasurement;
+        this.timestamp = System.currentTimeMillis();
+    }
+
+    public TaxiStats(float numberOfRides, float km, float battery, UntimedMeasurement pollutionMeasurement, long timestamp) {
+        this.numberOfRides = numberOfRides;
+        this.km = km;
+        this.battery = battery;
+        this.pollutionMeasurement = pollutionMeasurement;
+        this.timestamp = timestamp;
+    }
+
+    public float getNumberOfRides() {
+        return numberOfRides;
+    }
+
+    public float getKm() {
+        return km;
+    }
+
+    public float getBattery() {
+        return battery;
+    }
+
+    public UntimedMeasurement getPollutionMeasurement() {
+        return pollutionMeasurement;
+    }
+
+    public long getTimestamp() {
+        return timestamp;
+    }
+
+    public void setNumberOfRides(float numberOfRides) {
+        this.numberOfRides = numberOfRides;
+    }
+
+    public void setKm(float km) {
+        this.km = km;
+    }
+
+    public void setBattery(float battery) {
+        this.battery = battery;
+    }
+
+    public void setPollutionMeasurement(UntimedMeasurement pollutionMeasurement) {
+        this.pollutionMeasurement = pollutionMeasurement;
+    }
+
+    public void setTimestamp(long timestamp) {
+        this.timestamp = timestamp;
+    }
+}
+
+class UntimedMeasurement {
+    private double value;
+
+    public UntimedMeasurement() {
+    }
+
+    public UntimedMeasurement(double value) {
+        this.value = value;
+    }
+
+    public UntimedMeasurement(Measurement measurement) {
+        this.value = measurement.getValue();
+    }
+
+    public double getValue() {
+        return value;
+    }
+
+    public void setValue(double value) {
+        this.value = value;
     }
 }
 
