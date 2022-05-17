@@ -27,6 +27,14 @@ public class Coordinate {
         this.y = y;
     }
 
+    public static double getDistanceBetween(Coordinate c1, Coordinate c2) {
+        return Math.sqrt(Math.pow(c2.getX() - c1.getX(), 2) + Math.pow(c2.getY() - c1.getY(), 2));
+    }
+
+    public double getDistanceTo(Coordinate c) {
+        return Coordinate.getDistanceBetween(this, c);
+    }
+
     @Override
     public boolean equals(Object obj) {
         if (obj instanceof Coordinate) {
