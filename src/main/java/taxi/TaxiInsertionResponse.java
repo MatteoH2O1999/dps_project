@@ -1,5 +1,7 @@
 package taxi;
 
+import seta.Coordinate;
+
 import javax.xml.bind.annotation.XmlRootElement;
 import java.util.ArrayList;
 

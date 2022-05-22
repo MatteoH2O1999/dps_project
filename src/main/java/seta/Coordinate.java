@@ -1,4 +1,4 @@
-package taxi;
+package seta;
 
 public class Coordinate {
     private int x, y;

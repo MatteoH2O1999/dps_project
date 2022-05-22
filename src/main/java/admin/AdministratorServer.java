@@ -3,6 +3,7 @@ package admin;
 import com.sun.net.httpserver.HttpServer;
 import com.sun.jersey.api.container.httpserver.HttpServerFactory;
 import sensors.Measurement;
+import seta.Coordinate;
 import taxi.*;
 
 import javax.ws.rs.*;

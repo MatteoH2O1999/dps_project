@@ -1,5 +1,7 @@
 package taxi;
 
+import seta.Coordinate;
+
 public class TaxiRide {
     private Coordinate startCoordinate, arrivalCoordinate;
 
