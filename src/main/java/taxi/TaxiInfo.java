@@ -46,4 +46,13 @@ public class TaxiInfo {
         }
         this.port = port;
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof TaxiInfo)) {
+            return false;
+        }
+        TaxiInfo otherInfo = (TaxiInfo) obj;
+        return (this.id == otherInfo.id) && (this.ipAddress.equals(otherInfo.ipAddress)) && (this.port == otherInfo.port);
+    }
 }

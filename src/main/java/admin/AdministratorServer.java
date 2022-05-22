@@ -56,6 +56,7 @@ public class AdministratorServer {
         ArrayList<TaxiInfo> taxis;
         try {
             taxis = new ArrayList<>(Server.getInstance().addTaxi(taxiInfo));
+            taxis.remove(taxiInfo);
         } catch (TaxiAlreadyExistException e) {
             return Response.status(406).build();
         }

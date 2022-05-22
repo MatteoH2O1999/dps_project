@@ -2,7 +2,6 @@ package seta;
 
 import com.google.gson.Gson;
 import org.eclipse.paho.client.mqttv3.*;
-import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 import taxi.*;
 
 import java.io.IOException;
@@ -110,7 +109,7 @@ public class SETA extends Thread{
                 } else if (MQTTTopics.isRideTopic(topic)) {
                     throw new RuntimeException("Taxis should not write to a ride topic.");
                 } else {
-                    throw new NotImplementedException();
+                    throw new RuntimeException("I don't know how you even got here...");
                 }
             }
 
