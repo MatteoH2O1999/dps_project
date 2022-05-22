@@ -2,6 +2,7 @@ package seta;
 
 import com.google.gson.Gson;
 import org.eclipse.paho.client.mqttv3.*;
+import sun.reflect.generics.reflectiveObjects.NotImplementedException;
 import taxi.*;
 
 import java.io.IOException;
@@ -71,6 +72,7 @@ public class SETA extends Thread{
                 return;
             }
         }
+        this.finalizeSETA();
     }
 
     private void initializeSETA() {
@@ -80,15 +82,72 @@ public class SETA extends Thread{
     }
 
     private void initializeMQTTClient() {
-        // TODO
+        MqttConnectOptions mqttConnectOptions = new MqttConnectOptions();
+        mqttConnectOptions.setCleanSession(true);
+        mqttConnectOptions.setKeepAliveInterval(60);
+        try {
+            this.mqttClient.connect(mqttConnectOptions);
+        } catch (MqttException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void initializeMQTTCallback() {
-        // TODO
+        this.mqttClient.setCallback(new MqttCallback() {
+            @Override
+            public void connectionLost(Throwable cause) {
+                throw new RuntimeException(cause);
+            }
+
+            @Override
+            public void messageArrived(String topic, MqttMessage message) {
+                Gson gson = new Gson();
+                if (MQTTTopics.isAckTopic(topic)) {
+                    District d = MQTTTopics.districtFromTopic(topic);
+                    RideAck acks = gson.fromJson(new String(message.getPayload()), RideAck.class);
+                    int ack = acks.getRideAck();
+                    updateAck(d, ack);
+                } else if (MQTTTopics.isRideTopic(topic)) {
+                    throw new RuntimeException("Taxis should not write to a ride topic.");
+                } else {
+                    throw new NotImplementedException();
+                }
+            }
+
+            @Override
+            public void deliveryComplete(IMqttDeliveryToken token) {
+            }
+        });
     }
 
     private void initializeSubscriptions() {
-        // TODO
+        try {
+            this.mqttClient.subscribe(MQTTTopics.getAckTopic(null));
+        } catch (MqttException e) {
+            System.out.println("Failure in subscribing to ack topics.");
+            throw new RuntimeException(e);
+        }
+    }
+
+    private void finalizeSETA() {
+        try {
+            this.mqttClient.unsubscribe(MQTTTopics.getAckTopic(null));
+        } catch (MqttException e) {
+            System.out.println("Failure in unsubscribing from ack topics.");
+            throw new RuntimeException(e);
+        }
+        try {
+            this.mqttClient.disconnect();
+        } catch (MqttException e) {
+            System.out.println("Failed to disconnect the client");
+            throw new RuntimeException(e);
+        }
+        try {
+            this.mqttClient.close();
+        } catch (MqttException e) {
+            System.out.println("Failed to close the client.");
+            throw new RuntimeException(e);
+        }
     }
 
     private static boolean rideIsValid(TaxiRide taxiRide) {
@@ -130,7 +189,6 @@ public class SETA extends Thread{
             this.mqttClient.publish(topic, message);
         } catch (MqttException e) {
             System.out.println("Error while sending the message.");
-            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }
@@ -158,7 +216,6 @@ public class SETA extends Thread{
             this.mqttClient.publish(topic, message);
         } catch (MqttException e) {
             System.out.println("Error while sending the message.");
-            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }
