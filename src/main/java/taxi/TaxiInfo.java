@@ -55,4 +55,8 @@ public class TaxiInfo {
         TaxiInfo otherInfo = (TaxiInfo) obj;
         return (this.id == otherInfo.id) && (this.ipAddress.equals(otherInfo.ipAddress)) && (this.port == otherInfo.port);
     }
+
+    public TaxiInfo copy() {
+        return new TaxiInfo(this.id, this.ipAddress, this.port);
+    }
 }
