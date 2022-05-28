@@ -64,7 +64,7 @@ public class SETA extends Thread{
         while (this.loop) {
             this.sendRide(this.createRide());
             try {
-                Thread.sleep(this.getNextRideInterval());
+                Thread.sleep(this.getNextRideInterval() * 1000);
             } catch (InterruptedException e) {
                 System.out.println("Thread.sleep was interrupted.");
                 e.printStackTrace();

@@ -14,6 +14,8 @@ class TaxiProcess {
     public static final String address = "localhost";
     public static final int port = 1338;
     public static final String addPath = "/server/add";
+    public static final String infoPath = "/server/measure";
+    public static final int timeBetweenMeasurements = 15;
 
     public static void main(String[] args) {
         BufferedReader userInput = new BufferedReader(new InputStreamReader(System.in));
@@ -84,8 +86,10 @@ public class Taxi extends Thread{
     private final String address;
     private final int port;
 
-    private final PM10Simulator pm10Sensor = new PM10Simulator(new SensorBuffer());
+    private final Buffer sensorBuffer;
+    private final PM10Simulator pm10Sensor;
 
+    private volatile boolean running = true;
     private TaxiState currentState;
 
     private final List<TaxiInfo> otherTaxis;
@@ -99,8 +103,8 @@ public class Taxi extends Thread{
 
     public Taxi(int id, String address, int port) {
         Client client = Client.create();
-        String ipAddress = "http//" + TaxiProcess.address + ":" + TaxiProcess.port + TaxiProcess.addPath;
-        WebResource webResource = client.resource(ipAddress);
+        String webAddress = "http//" + TaxiProcess.address + ":" + TaxiProcess.port + TaxiProcess.addPath;
+        WebResource webResource = client.resource(webAddress);
         TaxiInfo taxiRequest = new TaxiInfo(id, address, port);
         String request = new Gson().toJson(taxiRequest);
         ClientResponse clientResponse = webResource.type("application/json").post(ClientResponse.class, request);
@@ -113,6 +117,8 @@ public class Taxi extends Thread{
         this.address = address;
         this.port = port;
         this.otherTaxis = taxiInsertionResponse.getTaxis();
+        this.sensorBuffer = new SensorBuffer();
+        this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
         this.pm10Sensor.start();
         for (TaxiInfo info :
                 this.otherTaxis) {
@@ -129,6 +135,8 @@ public class Taxi extends Thread{
         this.address = taxiInfo.getIpAddress();
         this.port = taxiInfo.getPort();
         this.otherTaxis = otherTaxis;
+        this.sensorBuffer = new SensorBuffer();
+        this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
         this.pm10Sensor.start();
         for (TaxiInfo info :
                 this.otherTaxis) {
@@ -141,7 +149,9 @@ public class Taxi extends Thread{
 
     @Override
     public void run() {
-        this.getCurrentState().execute();
+        while (this.running) {
+            this.getCurrentState().execute();
+        }
     }
 
     private void sayHello(TaxiInfo taxiInfo) {
@@ -233,5 +243,41 @@ public class Taxi extends Thread{
             newList.add(taxiInfo.copy());
         }
         return newList;
+    }
+}
+
+class InformationThread extends Thread {
+    private final WebResource webResource;
+    private volatile boolean running = true;
+
+    private final Buffer sensorBuffer;
+    private final Taxi taxi;
+
+    public InformationThread(Taxi taxi, Buffer sensorBuffer) {
+        this.taxi = taxi;
+        this.sensorBuffer = sensorBuffer;
+        Client client = Client.create();
+        String address = "http//" + TaxiProcess.address + ":" + TaxiProcess.port + TaxiProcess.infoPath;
+        this.webResource = client.resource(address);
+    }
+
+    @Override
+    public void run() {
+        while (this.running) {
+            this.sendMeasurement();
+            try {
+                Thread.sleep(TaxiProcess.timeBetweenMeasurements * 1000);
+            } catch (InterruptedException e) {
+                System.out.println("Thread.sleep was interrupted.");
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    private void sendMeasurement() {
+    }
+
+    public void shutdown() {
+        this.running = false;
     }
 }
