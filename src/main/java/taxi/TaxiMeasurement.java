@@ -3,7 +3,7 @@ package taxi;
 import sensors.Measurement;
 
 import javax.xml.bind.annotation.XmlRootElement;
-import java.util.ArrayList;
+import java.util.*;
 
 @XmlRootElement
 public class TaxiMeasurement {
@@ -11,13 +11,13 @@ public class TaxiMeasurement {
     private int numberOfRides;
     private float km;
     private float battery;
-    private ArrayList<Measurement> pollutionMeasurements = new ArrayList<>();
+    private List<Measurement> pollutionMeasurements = new ArrayList<>();
     private long timestamp;
 
     public TaxiMeasurement() {
     }
 
-    public TaxiMeasurement(int id, int numberOfRides, float km, float battery, ArrayList<Measurement> pollutionMeasurements, long timestamp) {
+    public TaxiMeasurement(int id, int numberOfRides, float km, float battery, List<Measurement> pollutionMeasurements, long timestamp) {
         if (km <= 0) {
             throw new IllegalArgumentException("Expected positive distance");
         }
@@ -48,8 +48,8 @@ public class TaxiMeasurement {
         return battery;
     }
 
-    public ArrayList<Measurement> getPollutionMeasurements() {
-        ArrayList<Measurement> newMeasurements = new ArrayList<>();
+    public List<Measurement> getPollutionMeasurements() {
+        List<Measurement> newMeasurements = new ArrayList<>();
         for (Measurement m :
                 this.pollutionMeasurements) {
             newMeasurements.add(new Measurement(m.getId(), m.getType(), m.getValue(), m.getTimestamp()));
@@ -77,7 +77,7 @@ public class TaxiMeasurement {
         this.battery = battery;
     }
 
-    public void setPollutionMeasurements(ArrayList<Measurement> pollutionMeasurements) {
+    public void setPollutionMeasurements(List<Measurement> pollutionMeasurements) {
         this.pollutionMeasurements = new ArrayList<>();
         for (Measurement m :
                 pollutionMeasurements) {

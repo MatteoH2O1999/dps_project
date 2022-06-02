@@ -1,0 +1,44 @@
+package taxi.communication;
+
+service TaxiCommunication {
+  rpc Greet (TaxiGreeting) returns (TaxiGreetingResponse);
+  rpc RequestRide (TaxiRideRequest) returns (TaxiRideResponse);
+}
+
+message Coordinates {
+  required int32 x = 1;
+  required int32 y = 2;
+}
+
+message TaxiRideRequest {
+  message RideInformation {
+    required int32 requestId = 1;
+    required Coordinates rideStart = 2;
+  }
+  message TaxiState {
+    required float battery = 1;
+    required Coordinates currentPosition = 2;
+  }
+  required int32 taxiId = 1;
+  required TaxiState taxiState = 2;
+  required RideInformation rideInfo = 3;
+}
+
+message TaxiInformation {
+  required int32 id = 1;
+  required string address = 2;
+  required int32 port = 3;
+}
+
+message TaxiRideResponse {
+  required bool ok = 1;
+}
+
+message TaxiGreeting {
+  required TaxiInformation taxiInfo = 1;
+  required Coordinates startingPosition = 2;
+}
+
+message TaxiGreetingResponse {
+  required bool ok = 1;
+}

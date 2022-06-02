@@ -2,8 +2,11 @@ package taxi;
 
 import com.google.gson.Gson;
 import com.sun.jersey.api.client.*;
+import io.grpc.stub.StreamObserver;
 import sensors.*;
 import seta.Coordinate;
+import taxi.communication.TaxiComms;
+import taxi.communication.TaxiCommunicationGrpc.TaxiCommunicationImplBase;
 import taxi.FSM.States.Idle;
 import taxi.FSM.TaxiState;
 
@@ -82,9 +85,9 @@ class TaxiProcess {
 }
 
 public class Taxi extends Thread{
-    private final int id;
-    private final String address;
-    private final int port;
+    public final int id;
+    public final String address;
+    public final int port;
 
     private final Buffer sensorBuffer;
     private final PM10Simulator pm10Sensor;
@@ -95,6 +98,8 @@ public class Taxi extends Thread{
     private final List<TaxiInfo> otherTaxis;
     private Coordinate currentPosition;
     private float battery = 100.0F;
+    private int completedRides = 0;
+    private float completedKm = 0.0F;
 
     private Integer receivedElectionAck = 0;
     private Integer completedElectionAck = 0;
@@ -119,14 +124,14 @@ public class Taxi extends Thread{
         this.otherTaxis = taxiInsertionResponse.getTaxis();
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
-        this.initializeMQTT();
-        this.initializeGrpc();
-        this.initializeState();
         this.pm10Sensor.start();
         for (TaxiInfo info :
                 this.otherTaxis) {
             this.sayHello(info);
         }
+        this.initializeState();
+        this.initializeGrpc();
+        this.initializeMQTT();
     }
 
     public Taxi(Coordinate startingPosition, TaxiInfo taxiInfo, List<TaxiInfo> otherTaxis) {
@@ -137,14 +142,14 @@ public class Taxi extends Thread{
         this.otherTaxis = otherTaxis;
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
-        this.initializeState();
-        this.initializeGrpc();
-        this.initializeMQTT();
         this.pm10Sensor.start();
         for (TaxiInfo info :
                 this.otherTaxis) {
             this.sayHello(info);
         }
+        this.initializeState();
+        this.initializeGrpc();
+        this.initializeMQTT();
     }
 
     @Override
@@ -236,6 +241,24 @@ public class Taxi extends Thread{
         return exitRequested;
     }
 
+    public synchronized void completeRide(float completedKm) {
+        this.completedRides++;
+        this.completedKm += completedKm;
+    }
+
+    public synchronized void resetRide() {
+        this.completedRides = 0;
+        this.completedKm = 0.0F;
+    }
+
+    public synchronized int getCompletedRides() {
+        return completedRides;
+    }
+
+    public synchronized float getCompletedKm() {
+        return completedKm;
+    }
+
     public synchronized List<TaxiInfo> getTaxis() {
         ArrayList<TaxiInfo> newList = new ArrayList<>();
         for (TaxiInfo taxiInfo :
@@ -244,9 +267,22 @@ public class Taxi extends Thread{
         }
         return newList;
     }
+
+    class GrpcService extends TaxiCommunicationImplBase {
+        @Override
+        public void greet(TaxiComms.TaxiGreeting request, StreamObserver<TaxiComms.TaxiGreetingResponse> responseObserver) {
+            // TODO
+        }
+
+        @Override
+        public void requestRide(TaxiComms.TaxiRideRequest request, StreamObserver<TaxiComms.TaxiRideResponse> responseObserver) {
+            // TODO
+        }
+    }
 }
 
 class InformationThread extends Thread {
+    private final Gson gson = new Gson();
     private final WebResource webResource;
     private volatile boolean running = true;
 
@@ -275,6 +311,18 @@ class InformationThread extends Thread {
     }
 
     private void sendMeasurement() {
+        TaxiMeasurement taxiMeasurement = new TaxiMeasurement();
+        taxiMeasurement.setId(this.taxi.id);
+        taxiMeasurement.setNumberOfRides(this.taxi.getCompletedRides());
+        taxiMeasurement.setBattery(this.taxi.getBattery());
+        taxiMeasurement.setKm(this.taxi.getCompletedKm());
+        taxiMeasurement.setPollutionMeasurements(this.sensorBuffer.readAllAndClean());
+        taxiMeasurement.setTimestamp(System.currentTimeMillis());
+        String jsonRequest = this.gson.toJson(taxiMeasurement);
+        ClientResponse clientResponse = this.webResource.type("application/json").post(ClientResponse.class, jsonRequest);
+        if (clientResponse.getStatus() != 200) {
+            throw new RuntimeException("Something wrong with the server");
+        }
     }
 
     public void shutdown() {
