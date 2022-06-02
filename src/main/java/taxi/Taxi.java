@@ -119,14 +119,14 @@ public class Taxi extends Thread{
         this.otherTaxis = taxiInsertionResponse.getTaxis();
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
+        this.initializeMQTT();
+        this.initializeGrpc();
+        this.initializeState();
         this.pm10Sensor.start();
         for (TaxiInfo info :
                 this.otherTaxis) {
             this.sayHello(info);
         }
-        this.initializeMQTT();
-        this.initializeGrpc();
-        this.initializeState();
     }
 
     public Taxi(Coordinate startingPosition, TaxiInfo taxiInfo, List<TaxiInfo> otherTaxis) {
@@ -137,14 +137,14 @@ public class Taxi extends Thread{
         this.otherTaxis = otherTaxis;
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
+        this.initializeState();
+        this.initializeGrpc();
+        this.initializeMQTT();
         this.pm10Sensor.start();
         for (TaxiInfo info :
                 this.otherTaxis) {
             this.sayHello(info);
         }
-        this.initializeMQTT();
-        this.initializeGrpc();
-        this.initializeState();
     }
 
     @Override

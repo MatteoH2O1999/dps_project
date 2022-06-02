@@ -53,27 +53,34 @@ public class AdministratorServer {
     @Consumes({"application/xml", "application/json"})
     @Produces({"application/xml", "application/json"})
     public Response addTaxi(TaxiInfo taxiInfo) {
+        System.out.printf("Trying to add taxi: \n%s", taxiInfo.toString() + "\n");
         ArrayList<TaxiInfo> taxis;
         try {
             taxis = new ArrayList<>(Server.getInstance().addTaxi(taxiInfo));
             taxis.remove(taxiInfo);
         } catch (TaxiAlreadyExistException e) {
+            System.out.println("Insertion failed.\n");
             return Response.status(406).build();
         }
+        System.out.println("Insertion successful.");
         TaxiInsertionResponse insertionResponse = new TaxiInsertionResponse();
         insertionResponse.setTaxis(taxis);
         insertionResponse.setStartingPosition(AdministratorServer.startingPositions[AdministratorServer.randomGenerator.nextInt(4)]);
+        System.out.println("Sending to taxi following message:\n" + insertionResponse + "\n");
         return Response.ok(insertionResponse).build();
     }
 
     @DELETE
     @Path("delete/{id}")
     public Response removeTaxi(@PathParam("id") int taxiId) {
+        System.out.println("Trying to remove taxi with id: " + taxiId);
         try {
             Server.getInstance().removeTaxi(taxiId);
         } catch (TaxiNotFoundException e) {
+            System.out.println("Deletion failed.\n");
             return Response.status(404).build();
         }
+        System.out.println("Deletion successful.\n");
         return Response.ok().build();
     }
 
@@ -81,14 +88,17 @@ public class AdministratorServer {
     @Path("taxis")
     @Produces({"application/xml", "application/json"})
     public Response getTaxis() {
+        System.out.println("Sending taxi list to client...");
         List<TaxiInfo> taxis = Server.getInstance().getTaxiInfo();
         if (taxis.size() == 0) {
+            System.out.println("Failed.\n");
             return Response.status(404).build();
         }
         int[] taxiIds = new int[taxis.size()];
         for (int i = 0; i < taxis.size(); i++) {
             taxiIds[i] = taxis.get(i).getId();
         }
+        System.out.println("Success.\n");
         return Response.ok(new TaxiList(taxiIds)).build();
     }
 
@@ -96,6 +106,7 @@ public class AdministratorServer {
     @Path("taxis/{id}/{n}")
     @Produces({"application/xml", "application/json"})
     public Response getNMeasurements(@PathParam("id") int taxiId, @PathParam("n") int numberOfMeasurements) {
+        System.out.println("Sending last " + numberOfMeasurements + " measurements about taxi with id " + taxiId + "...");
         List<TaxiMeasurement> taxiMeasurements = Server.getInstance().getTaxiMeasurements();
         taxiMeasurements.removeIf(taxiMeasurement -> taxiMeasurement.getId() != taxiId);
         taxiMeasurements.sort((o1, o2) -> {
@@ -103,6 +114,7 @@ public class AdministratorServer {
             return (int)diff;
         });
         if (taxiMeasurements.size() == 0) {
+            System.out.println("Failed.\n");
             return Response.status(404).build();
         }
         if (taxiMeasurements.size() >= numberOfMeasurements) {
@@ -137,6 +149,7 @@ public class AdministratorServer {
         stats.setNumberOfRides(avgRides / numberOfMeasurements);
         stats.setPollutionMeasurement(measurement);
         stats.setTimestamp(System.currentTimeMillis());
+        System.out.println("Success.\n");
         return Response.ok(stats).build();
     }
 
@@ -144,10 +157,12 @@ public class AdministratorServer {
     @Path("taxis/measurements/{t1}/{t2}")
     @Produces({"application/xml", "application/json"})
     public Response getMeasurementAverage(@PathParam("t1") long startRange, @PathParam("t2") long endRange) {
+        System.out.println("Sending taxi information with timestamps between " + startRange + " and " + endRange + "...");
         List<TaxiMeasurement> taxiMeasurements = Server.getInstance().getTaxiMeasurements();
         taxiMeasurements.removeIf(taxiMeasurement -> taxiMeasurement.getTimestamp() > endRange || taxiMeasurement.getTimestamp() < startRange);
 
         if (taxiMeasurements.size() == 0) {
+            System.out.println("Failed.\n");
             return Response.status(404).build();
         }
 
@@ -177,6 +192,7 @@ public class AdministratorServer {
         stats.setNumberOfRides(avgRides / taxiMeasurements.size());
         stats.setPollutionMeasurement(measurement);
         stats.setTimestamp(System.currentTimeMillis());
+        System.out.println("Success.\n");
         return Response.ok(stats).build();
     }
 
@@ -184,6 +200,7 @@ public class AdministratorServer {
     @Path("measure")
     @Consumes({"application/xml", "application/json"})
     public Response addMeasurement(TaxiMeasurement taxiMeasurement) {
+        System.out.println("Adding measurement:" + taxiMeasurement.toString() + "\n");
         Server.getInstance().addTaxiMeasurement(taxiMeasurement);
         return Response.ok().build();
     }

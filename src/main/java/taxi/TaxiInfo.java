@@ -59,4 +59,9 @@ public class TaxiInfo {
     public TaxiInfo copy() {
         return new TaxiInfo(this.id, this.ipAddress, this.port);
     }
+
+    @Override
+    public String toString() {
+        return "ID: " + this.id + "\nAddress: " + this.ipAddress + "\nPort: " + this.port;
+    }
 }

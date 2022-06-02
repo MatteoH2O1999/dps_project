@@ -28,4 +28,9 @@ public class TaxiRide {
     public void setArrivalCoordinate(Coordinate arrivalCoordinate) {
         this.arrivalCoordinate = arrivalCoordinate;
     }
+
+    @Override
+    public String toString() {
+        return startCoordinate + " -> " + arrivalCoordinate;
+    }
 }

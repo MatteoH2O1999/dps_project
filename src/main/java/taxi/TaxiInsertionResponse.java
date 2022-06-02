@@ -28,4 +28,16 @@ public class TaxiInsertionResponse {
     public void setTaxis(ArrayList<TaxiInfo> taxis) {
         this.taxis = taxis;
     }
+
+    @Override
+    public String toString() {
+        StringBuilder str = new StringBuilder("Coordinates: " + this.startingPosition.toString());
+        str.append("\nTaxis:\n[");
+        for (TaxiInfo taxiInfo :
+                this.taxis) {
+            str.append("\n").append(taxiInfo.toString()).append("\n");
+        }
+        str.append("]");
+        return str.toString();
+    }
 }

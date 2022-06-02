@@ -100,10 +100,14 @@ public class SETA extends Thread{
 
             @Override
             public void messageArrived(String topic, MqttMessage message) {
+                System.out.println("Received message from topic " + topic);
                 Gson gson = new Gson();
                 if (MQTTTopics.isAckTopic(topic)) {
                     District d = MQTTTopics.districtFromTopic(topic);
                     RideAck acks = gson.fromJson(new String(message.getPayload()), RideAck.class);
+                    System.out.println("Received message with the following payload:");
+                    System.out.println("\tDistrict: " + d.getId());
+                    System.out.println("\tAcks: " + acks + "\n");
                     int ack = acks.getRideAck();
                     updateAck(d, ack);
                 } else if (MQTTTopics.isRideTopic(topic)) {
@@ -170,11 +174,13 @@ public class SETA extends Thread{
     }
 
     private synchronized void sendRide(TaxiRide taxiRide) {
+        System.out.println("Sending new ride...");
         int requestId = this.idCounter;
         this.idCounter++;
         District rideDistrict = District.fromCoordinate(taxiRide.getStartCoordinate());
         RideRequest rideRequest = new RideRequest(requestId, taxiRide);
         ArrayList<RideRequest> oldRides = this.oldRideRequests.get(rideDistrict.getId());
+        oldRides.add(rideRequest);
         RideRequestPinned rideRequestPinned = new RideRequestPinned(rideRequest, oldRides);
 
         Gson gson = new Gson();
@@ -190,6 +196,9 @@ public class SETA extends Thread{
             System.out.println("Error while sending the message.");
             throw new RuntimeException(e);
         }
+        System.out.println("Sent message on topic " + topic);
+        System.out.println("with payload:");
+        System.out.println(rideRequestPinned);
     }
 
     private void updateRideList(District d) {
@@ -199,10 +208,11 @@ public class SETA extends Thread{
     }
 
     private void sendUpdate(District d) {
+        System.out.println("Sending update after receiving ack...");
         RideRequestPinned rideRequestPinned = new RideRequestPinned();
         rideRequestPinned.setNewRide(null);
         rideRequestPinned.setRequestId(-1);
-        rideRequestPinned.setOldRides(this.oldRideRequests.get(d.getId()));
+        rideRequestPinned.setAllRides(this.oldRideRequests.get(d.getId()));
 
         Gson gson = new Gson();
         String topic = MQTTTopics.getRideTopic(d);
@@ -217,6 +227,9 @@ public class SETA extends Thread{
             System.out.println("Error while sending the message.");
             throw new RuntimeException(e);
         }
+        System.out.println("Sent message on topic " + topic);
+        System.out.println("with payload:");
+        System.out.println(rideRequestPinned);
     }
 
     private synchronized void updateAck(District d, int newValue) {

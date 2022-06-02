@@ -6,22 +6,22 @@ import java.util.ArrayList;
 
 public class RideRequestPinned {
     private TaxiRide newRide;
-    private ArrayList<RideRequest> oldRides;
+    private ArrayList<RideRequest> allRides;
     private int requestId;
 
     public RideRequestPinned() {
     }
 
-    public RideRequestPinned(int requestId, TaxiRide newRide, ArrayList<RideRequest> oldRides) {
+    public RideRequestPinned(int requestId, TaxiRide newRide, ArrayList<RideRequest> allRides) {
         this.requestId = requestId;
         this.newRide = newRide;
-        this.oldRides = oldRides;
+        this.allRides = allRides;
     }
 
-    public RideRequestPinned(RideRequest request, ArrayList<RideRequest> oldRides) {
+    public RideRequestPinned(RideRequest request, ArrayList<RideRequest> allRides) {
         this.requestId = request.getRequestId();
         this.newRide = request.getRide();
-        this.oldRides = oldRides;
+        this.allRides = allRides;
     }
 
     public int getRequestId() {
@@ -32,8 +32,8 @@ public class RideRequestPinned {
         return newRide;
     }
 
-    public ArrayList<RideRequest> getOldRides() {
-        return oldRides;
+    public ArrayList<RideRequest> getAllRides() {
+        return allRides;
     }
 
     public void setRequestId(int requestId) {
@@ -44,7 +44,21 @@ public class RideRequestPinned {
         this.newRide = newRide;
     }
 
-    public void setOldRides(ArrayList<RideRequest> oldRides) {
-        this.oldRides = oldRides;
+    public void setAllRides(ArrayList<RideRequest> allRides) {
+        this.allRides = allRides;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("Request ID: ").append(this.requestId).append("\n");
+        stringBuilder.append("New ride: ").append(this.newRide).append("\n");
+        stringBuilder.append("[");
+        for (RideRequest rideRequest :
+                this.getAllRides()) {
+            stringBuilder.append("\n").append(rideRequest).append("\n");
+        }
+        stringBuilder.append("]");
+        return stringBuilder.toString();
     }
 }

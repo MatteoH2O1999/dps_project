@@ -27,4 +27,9 @@ public class RideAck {
     public void setRideAck(int rideAck) {
         this.rideAck = rideAck;
     }
+
+    @Override
+    public String toString() {
+        return "(Election ack: " + this.electionAck + "; Ride ack: " + this.rideAck + ")";
+    }
 }

@@ -88,4 +88,21 @@ public class TaxiMeasurement {
     public void setTimestamp(long timestamp) {
         this.timestamp = timestamp;
     }
+
+    @Override
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("Timestamp: ").append(this.timestamp).append("\n");
+        stringBuilder.append("Taxi ID: ").append(this.id).append("\n");
+        stringBuilder.append("Number of rides: ").append(this.numberOfRides).append("\n");
+        stringBuilder.append("Travelled km: ").append(this.km).append("\n");
+        stringBuilder.append("Battery level: ").append(this.battery).append("\n");
+        stringBuilder.append("Pollution measurements:\n[");
+        for (Measurement m :
+                this.getPollutionMeasurements()) {
+            stringBuilder.append("\n").append(m.toString()).append("\n");
+        }
+        stringBuilder.append("]");
+        return stringBuilder.toString();
+    }
 }

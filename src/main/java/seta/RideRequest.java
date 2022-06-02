@@ -29,4 +29,9 @@ public class RideRequest {
     public void setRide(TaxiRide ride) {
         this.ride = ride;
     }
+
+    @Override
+    public String toString() {
+        return "ID: " + this.requestId + "\nRide: " + this.ride;
+    }
 }
