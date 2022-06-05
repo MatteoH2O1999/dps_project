@@ -2,10 +2,12 @@ package taxi;
 
 import com.google.gson.Gson;
 import com.sun.jersey.api.client.*;
+import io.grpc.*;
 import io.grpc.stub.StreamObserver;
+import org.eclipse.paho.client.mqttv3.*;
 import sensors.*;
-import seta.Coordinate;
-import taxi.communication.TaxiComms;
+import seta.*;
+import taxi.communication.*;
 import taxi.communication.TaxiCommunicationGrpc.TaxiCommunicationImplBase;
 import taxi.FSM.States.Idle;
 import taxi.FSM.TaxiState;
@@ -89,8 +91,12 @@ public class Taxi extends Thread{
     public final String address;
     public final int port;
 
+    public Server server;
+    public MqttClient mqttClient;
+
     private final Buffer sensorBuffer;
-    private final PM10Simulator pm10Sensor;
+    public final PM10Simulator pm10Sensor;
+    public final InformationThread informationThread;
 
     private volatile boolean running = true;
     private TaxiState currentState;
@@ -103,6 +109,9 @@ public class Taxi extends Thread{
 
     private Integer receivedElectionAck = 0;
     private Integer completedElectionAck = 0;
+    private List<RideRequest> requests = null;
+    private final HashMap<Integer, Boolean> decisions = new HashMap<>();
+
     private volatile Boolean rechargeRequested = false;
     private volatile Boolean exitRequested = false;
 
@@ -125,13 +134,34 @@ public class Taxi extends Thread{
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
         this.pm10Sensor.start();
+        List<GreetingThread> threads = new ArrayList<>();
         for (TaxiInfo info :
                 this.otherTaxis) {
-            this.sayHello(info);
+            threads.add(new GreetingThread(info));
         }
+        for (GreetingThread t :
+                threads) {
+            t.start();
+        }
+        try {
+            for (GreetingThread t :
+                    threads) {
+                t.join();
+            }
+        } catch (InterruptedException e) {
+            System.out.println("Interrupted while greeting");
+            throw new RuntimeException(e);
+        }
+        this.initAck(threads);
         this.initializeState();
         this.initializeGrpc();
-        this.initializeMQTT();
+        try {
+            this.initializeMQTT();
+        } catch (MqttException e) {
+            throw new RuntimeException(e);
+        }
+        this.informationThread = new InformationThread(this, this.sensorBuffer);
+        this.informationThread.start();
     }
 
     public Taxi(Coordinate startingPosition, TaxiInfo taxiInfo, List<TaxiInfo> otherTaxis) {
@@ -143,32 +173,118 @@ public class Taxi extends Thread{
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
         this.pm10Sensor.start();
+        List<GreetingThread> threads = new ArrayList<>();
         for (TaxiInfo info :
                 this.otherTaxis) {
-            this.sayHello(info);
+            threads.add(new GreetingThread(info));
         }
+        for (GreetingThread t :
+                threads) {
+            t.start();
+        }
+        try {
+            for (GreetingThread t :
+                    threads) {
+                t.join();
+            }
+        } catch (InterruptedException e) {
+            System.out.println("Interrupted while greeting");
+            throw new RuntimeException(e);
+        }
+        this.initAck(threads);
         this.initializeState();
         this.initializeGrpc();
-        this.initializeMQTT();
+        try {
+            this.initializeMQTT();
+        } catch (MqttException e) {
+            throw new RuntimeException(e);
+        }
+        this.informationThread = new InformationThread(this, this.sensorBuffer);
+        this.informationThread.start();
     }
 
     @Override
     public void run() {
         while (this.running) {
-            this.getCurrentState().execute();
+            this.getCurrentState().execute(this);
         }
     }
 
-    private void sayHello(TaxiInfo taxiInfo) {
-        // TODO
+    private AckPair sayHello(TaxiInfo taxiInfo) {
+        AckPair toReturn;
+        Coordinate coordinate = this.getCurrentPosition();
+        District district = District.fromCoordinate(coordinate);
+        ManagedChannel channel = ManagedChannelBuilder.forAddress(taxiInfo.getIpAddress(), taxiInfo.getPort()).usePlaintext().build();
+        TaxiCommunicationGrpc.TaxiCommunicationBlockingStub stub = TaxiCommunicationGrpc.newBlockingStub(channel);
+        TaxiComms.TaxiGreeting greetingRequest = TaxiComms.TaxiGreeting.newBuilder()
+                .setTaxiInfo(TaxiComms.TaxiInformation.newBuilder()
+                        .setId(this.id)
+                        .setAddress(this.address)
+                        .setPort(this.port)
+                        .build())
+                .setStartingPosition(TaxiComms.Coordinates.newBuilder()
+                        .setX(coordinate.getX())
+                        .setY(coordinate.getY())
+                        .build())
+                .build();
+        TaxiComms.TaxiGreetingResponse response = stub.greet(greetingRequest);
+        channel.shutdown();
+        Coordinate otherCoordinate = new Coordinate(response.getTaxiPosition().getX(), response.getTaxiPosition().getY());
+        District otherDistrict = District.fromCoordinate(otherCoordinate);
+        if ((!district.equals(otherDistrict)) || (!response.getOk())) {
+            return null;
+        }
+        toReturn = new AckPair(response.getReceivedAck(), response.getCompletedAck());
+        return toReturn;
     }
 
-    private void initializeMQTT() {
-        // TODO
+    private void initAck(List<GreetingThread> threads) {
+        List<Integer> receivedAckList = new ArrayList<>();
+        List<Integer> completedAckList = new ArrayList<>();
+        for (GreetingThread greetingThread :
+                threads) {
+            if (greetingThread.isRelevant()) {
+                receivedAckList.add(greetingThread.getReceivedAck());
+                completedAckList.add(greetingThread.getCompletedAck());
+            }
+        }
+        this.setAck(Collections.min(receivedAckList), Collections.min(completedAckList));
+    }
+
+    private void initializeMQTT() throws MqttException {
+        this.mqttClient = new MqttClient("ftp://" + this.address + ":" + this.port, this.id + "-" + this.port);
+        MqttConnectOptions connectOptions = new MqttConnectOptions();
+        connectOptions.setCleanSession(true);
+        connectOptions.setKeepAliveInterval(60);
+        this.mqttClient.connect(connectOptions);
+        this.mqttClient.setCallback(new MqttCallback() {
+            @Override
+            public void connectionLost(Throwable cause) {
+                // Not used. Assume stable connection for project
+            }
+
+            @Override
+            public void messageArrived(String topic, MqttMessage message) throws Exception {
+                // TODO
+            }
+
+            @Override
+            public void deliveryComplete(IMqttDeliveryToken token) {
+                // Not used
+            }
+        });
     }
 
     private void initializeGrpc() {
-        // TODO
+        if (!this.address.equals("localhost")) {
+            throw new RuntimeException("Addresses different than localhost are not supported");
+        }
+        this.server = ServerBuilder.forPort(this.port).addService(new GrpcService()).build();
+        try {
+            this.server.start();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void initializeState() {
@@ -195,6 +311,7 @@ public class Taxi extends Thread{
 
     public synchronized void setCurrentState(TaxiState currentState) {
         this.currentState = currentState;
+        notifyAll();
     }
 
     public synchronized TaxiState getCurrentState() {
@@ -215,6 +332,20 @@ public class Taxi extends Thread{
 
     public synchronized void setCurrentPosition(Coordinate currentPosition) {
         this.currentPosition = currentPosition;
+    }
+
+    public synchronized void setAck(int receivedAck, int completedAck) {
+        int oldReceived = this.receivedElectionAck;
+        int oldCompleted = this.completedElectionAck;
+        this.receivedElectionAck = receivedAck;
+        this.completedElectionAck = completedAck;
+        if ((this.receivedElectionAck != oldReceived) || (this.completedElectionAck != oldCompleted)) {
+            notifyAll();
+        }
+    }
+
+    public synchronized void awaitChange() throws InterruptedException {
+        wait();
     }
 
     public void requestRecharge() {
@@ -239,6 +370,22 @@ public class Taxi extends Thread{
 
     public Boolean getExitRequested() {
         return exitRequested;
+    }
+
+    public synchronized int getCompletedElectionAck() {
+        return completedElectionAck;
+    }
+
+    public synchronized int getReceivedElectionAck() {
+        return receivedElectionAck;
+    }
+
+    public void setCompletedElectionAck(int completedElectionAck) {
+        this.completedElectionAck = completedElectionAck;
+    }
+
+    public void setReceivedElectionAck(int receivedElectionAck) {
+        this.receivedElectionAck = receivedElectionAck;
     }
 
     public synchronized void completeRide(float completedKm) {
@@ -268,15 +415,135 @@ public class Taxi extends Thread{
         return newList;
     }
 
+    public void stopRunning() {
+        this.running = false;
+    }
+
+    public boolean getDecision(TaxiComms.TaxiRideRequest rideRequest) {
+        int requestId = rideRequest.getRideInfo().getRequestId();
+        synchronized (this.decisions) {
+            if (this.decisions.containsKey(requestId)) {
+                return this.decisions.get(requestId);
+            }
+            boolean decision = this.getCurrentState().decide(this, rideRequest);
+            this.decisions.put(requestId, decision);
+            return decision;
+        }
+    }
+
+    public void mqttSubscribe(String topic, int qos) {
+        try {
+            this.mqttClient.subscribe(topic, qos);
+        } catch (MqttException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void mqttUnsubscribe(String topic) {
+        try {
+            this.mqttClient.unsubscribe(topic);
+        } catch (MqttException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     class GrpcService extends TaxiCommunicationImplBase {
         @Override
         public void greet(TaxiComms.TaxiGreeting request, StreamObserver<TaxiComms.TaxiGreetingResponse> responseObserver) {
-            // TODO
+            System.out.println("Received greeting:\n" + request.toString());
+            Coordinate currentCoordinates = getCurrentPosition();
+            TaxiComms.TaxiInformation taxiInformation = request.getTaxiInfo();
+            TaxiComms.Coordinates coordinates = request.getStartingPosition();
+            TaxiInfo toAdd = new TaxiInfo(taxiInformation.getId(), taxiInformation.getAddress(), taxiInformation.getPort());
+            getCurrentState().addTaxi(toAdd);
+            TaxiComms.TaxiGreetingResponse taxiGreetingResponse = TaxiComms.TaxiGreetingResponse.newBuilder()
+                    .setOk(true)
+                    .setReceivedAck(receivedElectionAck)
+                    .setCompletedAck(completedElectionAck)
+                    .setTaxiPosition(TaxiComms.Coordinates.newBuilder()
+                            .setX(currentCoordinates.getX())
+                            .setY(currentCoordinates.getY())
+                            .build())
+                    .build();
+            responseObserver.onNext(taxiGreetingResponse);
+            responseObserver.onCompleted();
         }
 
         @Override
         public void requestRide(TaxiComms.TaxiRideRequest request, StreamObserver<TaxiComms.TaxiRideResponse> responseObserver) {
-            // TODO
+            System.out.println("Received ride request:\n" + request.toString());
+            TaxiComms.TaxiRideResponse taxiRideResponse = TaxiComms.TaxiRideResponse.newBuilder()
+                    .setOk(!getDecision(request))
+                    .build();
+            responseObserver.onNext(taxiRideResponse);
+            responseObserver.onCompleted();
+        }
+
+        @Override
+        public void requestLeave(TaxiComms.TaxiRemovalRequest request, StreamObserver<TaxiComms.TaxiRemovalResponse> responseObserver) {
+            System.out.println("Received request to leave the system from:\n" + request.toString());
+            List<TaxiInfo> taxis = getTaxis();
+            TaxiInfo toRemove = new TaxiInfo(request.getId(), request.getAddress(), request.getPort());
+            TaxiComms.TaxiRemovalResponse taxiRemovalResponse;
+            if (!taxis.contains(toRemove)) {
+                taxiRemovalResponse = TaxiComms.TaxiRemovalResponse.newBuilder()
+                        .setOk(false)
+                        .build();
+            } else {
+                getCurrentState().removeTaxi(toRemove);
+                taxiRemovalResponse = TaxiComms.TaxiRemovalResponse.newBuilder()
+                        .setOk(true)
+                        .build();
+            }
+            responseObserver.onNext(taxiRemovalResponse);
+            responseObserver.onCompleted();
+        }
+    }
+
+    class GreetingThread extends Thread {
+        private final TaxiInfo taxiInfo;
+        private int receivedAck;
+        private int completedAck;
+        private boolean relevant = true;
+
+        public GreetingThread(TaxiInfo info) {
+            this.taxiInfo = info;
+        }
+
+        @Override
+        public void run() {
+            AckPair ackPair = sayHello(this.taxiInfo);
+            if (ackPair == null) {
+                relevant = false;
+            } else {
+                this.receivedAck = ackPair.receivedAck;
+                this.completedAck = ackPair.completedAck;
+            }
+        }
+
+        public int getCompletedAck() {
+            return completedAck;
+        }
+
+        public int getReceivedAck() {
+            return receivedAck;
+        }
+
+        public boolean isRelevant() {
+            return relevant;
+        }
+    }
+
+    static class AckPair {
+        public int receivedAck;
+        public int completedAck;
+
+        public AckPair() {
+        }
+
+        public AckPair(int receivedAck, int completedAck) {
+            this.receivedAck = receivedAck;
+            this.completedAck = completedAck;
         }
     }
 }

@@ -3,6 +3,7 @@ package taxi.communication;
 service TaxiCommunication {
   rpc Greet (TaxiGreeting) returns (TaxiGreetingResponse);
   rpc RequestRide (TaxiRideRequest) returns (TaxiRideResponse);
+  rpc RequestLeave (TaxiRemovalRequest) returns (TaxiRemovalResponse);
 }
 
 message Coordinates {
@@ -40,5 +41,18 @@ message TaxiGreeting {
 }
 
 message TaxiGreetingResponse {
+  required bool ok = 1;
+  required Coordinates taxiPosition = 2;
+  required int32 receivedAck = 3;
+  required int32 completedAck = 4;
+}
+
+message TaxiRemovalRequest {
+  required int32 id = 1;
+  required string address = 2;
+  required int32 port = 3;
+}
+
+message TaxiRemovalResponse {
   required bool ok = 1;
 }

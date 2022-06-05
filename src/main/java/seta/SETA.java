@@ -51,7 +51,7 @@ public class SETA extends Thread{
         }
         this.rideAck = new int[SETA.numberOfDistricts];
         try {
-            this.mqttClient = new MqttClient("ftp://" + SETA.address + ":" + SETA.port + "/", "1");
+            this.mqttClient = new MqttClient("ftp://" + SETA.address + ":" + SETA.port, "1");
         } catch (MqttException e) {
             System.out.println("Error in instantiating mqtt client. Interrupting...");
             throw new RuntimeException(e);
