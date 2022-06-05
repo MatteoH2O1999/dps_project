@@ -49,6 +49,15 @@ public class RideRequestPinned {
     }
 
     @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof RideRequestPinned)) {
+            return false;
+        }
+        RideRequestPinned other = (RideRequestPinned) obj;
+        return ((other.allRides.equals(this.allRides)) && (other.newRide.equals(this.newRide)) && (other.requestId == this.requestId));
+    }
+
+    @Override
     public String toString() {
         StringBuilder stringBuilder = new StringBuilder();
         stringBuilder.append("Request ID: ").append(this.requestId).append("\n");

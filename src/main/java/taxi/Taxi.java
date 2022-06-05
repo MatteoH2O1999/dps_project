@@ -107,10 +107,10 @@ public class Taxi extends Thread{
     private int completedRides = 0;
     private float completedKm = 0.0F;
 
-    private Integer receivedElectionAck = 0;
-    private Integer completedElectionAck = 0;
+    private Integer receivedElectionAck = null;
+    private Integer completedElectionAck = null;
     private List<RideRequest> requests = null;
-    private final HashMap<Integer, Boolean> decisions = new HashMap<>();
+    private final HashSet<Integer> decisions = new HashSet<>();
 
     private volatile Boolean rechargeRequested = false;
     private volatile Boolean exitRequested = false;
@@ -134,6 +134,8 @@ public class Taxi extends Thread{
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
         this.pm10Sensor.start();
+        this.initializeState();
+        this.initializeGrpc();
         List<GreetingThread> threads = new ArrayList<>();
         for (TaxiInfo info :
                 this.otherTaxis) {
@@ -153,8 +155,6 @@ public class Taxi extends Thread{
             throw new RuntimeException(e);
         }
         this.initAck(threads);
-        this.initializeState();
-        this.initializeGrpc();
         try {
             this.initializeMQTT();
         } catch (MqttException e) {
@@ -173,6 +173,8 @@ public class Taxi extends Thread{
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
         this.pm10Sensor.start();
+        this.initializeState();
+        this.initializeGrpc();
         List<GreetingThread> threads = new ArrayList<>();
         for (TaxiInfo info :
                 this.otherTaxis) {
@@ -192,8 +194,6 @@ public class Taxi extends Thread{
             throw new RuntimeException(e);
         }
         this.initAck(threads);
-        this.initializeState();
-        this.initializeGrpc();
         try {
             this.initializeMQTT();
         } catch (MqttException e) {
@@ -205,6 +205,8 @@ public class Taxi extends Thread{
 
     @Override
     public void run() {
+        this.mqttSubscribe(MQTTTopics.getRideTopic(District.fromCoordinate(this.getCurrentPosition())), 1);
+        this.mqttSubscribe(MQTTTopics.getAckTopic(District.fromCoordinate(this.getCurrentPosition())), 1);
         while (this.running) {
             this.getCurrentState().execute(this);
         }
@@ -265,7 +267,32 @@ public class Taxi extends Thread{
 
             @Override
             public void messageArrived(String topic, MqttMessage message) throws Exception {
-                // TODO
+                Gson gson = new Gson();
+                if (MQTTTopics.isRideTopic(topic)) {
+                    System.out.println("Received message from a ride topic: " + topic);
+                    RideRequestPinned rideRequestPinned = gson.fromJson(new String(message.getPayload()), RideRequestPinned.class);
+                    if (requests == null) {
+                        System.out.println("Taxi is receiving from current district for the first time.");
+                        System.out.println("Ride requests:" + rideRequestPinned.getAllRides().toString());
+                        requests = rideRequestPinned.getAllRides();
+                        updateRequests();
+                    } else {
+                        RideRequest newRequest = new RideRequest(rideRequestPinned.getRequestId(), rideRequestPinned.getNewRide());
+                        System.out.println("Taxi is receiving a new ride request: " + newRequest);
+                        if (!requests.contains(newRequest)) {
+                            requests.add(newRequest);
+                            updateRequests();
+                        }
+                    }
+                } else if (MQTTTopics.isAckTopic(topic)) {
+                    System.out.println("Received message from an ack topic: " + topic);
+                    RideAck rideAck = gson.fromJson(new String(message.getPayload()), RideAck.class);
+                    System.out.println("Ack: " + rideAck.toString());
+                    setAck(rideAck.getElectionAck(), rideAck.getRideAck());
+                    updateRequests();
+                } else {
+                    throw new RuntimeException("What???");
+                }
             }
 
             @Override
@@ -289,6 +316,13 @@ public class Taxi extends Thread{
 
     private void initializeState() {
         this.setCurrentState(Idle.IDLE);
+    }
+
+    private synchronized void updateRequests() {
+        if (this.completedElectionAck == null) {
+            return;
+        }
+        this.requests.removeIf(rideRequest -> rideRequest.getRequestId() <= this.completedElectionAck);
     }
 
     private synchronized void addTaxi(TaxiInfo taxiInfo) {
@@ -422,11 +456,13 @@ public class Taxi extends Thread{
     public boolean getDecision(TaxiComms.TaxiRideRequest rideRequest) {
         int requestId = rideRequest.getRideInfo().getRequestId();
         synchronized (this.decisions) {
-            if (this.decisions.containsKey(requestId)) {
-                return this.decisions.get(requestId);
+            if (this.decisions.contains(requestId)) {
+                return false;
             }
             boolean decision = this.getCurrentState().decide(this, rideRequest);
-            this.decisions.put(requestId, decision);
+            if (!decision) {
+                this.decisions.add(requestId);
+            }
             return decision;
         }
     }
@@ -435,6 +471,7 @@ public class Taxi extends Thread{
         try {
             this.mqttClient.subscribe(topic, qos);
         } catch (MqttException e) {
+            System.out.println("Error in subscribing to topic " + topic + " with qos " + qos);
             throw new RuntimeException(e);
         }
     }
@@ -443,6 +480,7 @@ public class Taxi extends Thread{
         try {
             this.mqttClient.unsubscribe(topic);
         } catch (MqttException e) {
+            System.out.println("Error in unsubscribing to topic " + topic);
             throw new RuntimeException(e);
         }
     }

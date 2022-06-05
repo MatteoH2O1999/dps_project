@@ -30,6 +30,15 @@ public class TaxiRide {
     }
 
     @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof TaxiRide)) {
+            return false;
+        }
+        TaxiRide other = (TaxiRide) obj;
+        return ((other.startCoordinate.equals(this.startCoordinate)) && (other.arrivalCoordinate.equals(this.arrivalCoordinate)));
+    }
+
+    @Override
     public String toString() {
         return startCoordinate + " -> " + arrivalCoordinate;
     }

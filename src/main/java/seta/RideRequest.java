@@ -31,6 +31,15 @@ public class RideRequest {
     }
 
     @Override
+    public boolean equals(Object obj) {
+        if (!(obj instanceof RideRequest)) {
+            return false;
+        }
+        RideRequest other = (RideRequest) obj;
+        return ((other.ride.equals(this.ride)) && (other.requestId == this.requestId));
+    }
+
+    @Override
     public String toString() {
         return "ID: " + this.requestId + "\nRide: " + this.ride;
     }
