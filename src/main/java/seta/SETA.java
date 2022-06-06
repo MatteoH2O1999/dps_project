@@ -30,8 +30,8 @@ class SETAProcess {
 }
 
 public class SETA extends Thread{
-    private final static String address = "localhost";
-    private final static int port = 1883;
+    public final static String address = "localhost";
+    public final static int port = 1883;
     private final static long numberOfRidesToGenerate = 2;
     private final static long timeIntervalToGenerateInSeconds = 5;
     private final static int numberOfDistricts = 4;
@@ -51,7 +51,7 @@ public class SETA extends Thread{
         }
         this.rideAck = new int[SETA.numberOfDistricts];
         try {
-            this.mqttClient = new MqttClient("ftp://" + SETA.address + ":" + SETA.port, "1");
+            this.mqttClient = new MqttClient("tcp://" + SETA.address + ":" + SETA.port, "1");
         } catch (MqttException e) {
             System.out.println("Error in instantiating mqtt client. Interrupting...");
             throw new RuntimeException(e);
@@ -179,7 +179,7 @@ public class SETA extends Thread{
         this.idCounter++;
         District rideDistrict = District.fromCoordinate(taxiRide.getStartCoordinate());
         RideRequest rideRequest = new RideRequest(requestId, taxiRide);
-        ArrayList<RideRequest> oldRides = this.oldRideRequests.get(rideDistrict.getId());
+        ArrayList<RideRequest> oldRides = this.oldRideRequests.get(rideDistrict.getId() - 1);
         oldRides.add(rideRequest);
         RideRequestPinned rideRequestPinned = new RideRequestPinned(rideRequest, oldRides);
 
@@ -202,7 +202,7 @@ public class SETA extends Thread{
     }
 
     private void updateRideList(District d) {
-        List<RideRequest> listToUpdate = this.oldRideRequests.get(d.getId());
+        List<RideRequest> listToUpdate = this.oldRideRequests.get(d.getId() - 1);
         int lastConfirmedAck = this.rideAck[d.getId()];
         listToUpdate.removeIf(request -> request.getRequestId() <= lastConfirmedAck);
     }
@@ -212,7 +212,7 @@ public class SETA extends Thread{
         RideRequestPinned rideRequestPinned = new RideRequestPinned();
         rideRequestPinned.setNewRide(null);
         rideRequestPinned.setRequestId(-1);
-        rideRequestPinned.setAllRides(this.oldRideRequests.get(d.getId()));
+        rideRequestPinned.setAllRides(this.oldRideRequests.get(d.getId() - 1));
 
         Gson gson = new Gson();
         String topic = MQTTTopics.getRideTopic(d);

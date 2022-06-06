@@ -7,6 +7,9 @@ public class Measurement implements Comparable<Measurement> {
     private double value;
     private long timestamp;
 
+    public Measurement() {
+    }
+
     public Measurement(String id, String type, double value, long timestamp) {
         this.value = value;
         this.timestamp = timestamp;

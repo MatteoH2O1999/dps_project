@@ -12,8 +12,19 @@ public class Idle implements TaxiState {
     }
 
     @Override
-    public boolean decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest) {
-        return false;
+    public Boolean decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest) {
+        try {
+            taxi.awaitChange();
+        } catch (InterruptedException e) {
+            System.out.println("Interrupted wait in IDLE.decide");
+            throw new RuntimeException(e);
+        }
+        return null;
+    }
+
+    @Override
+    public Boolean canRecharge(Taxi taxi, TaxiComms.TaxiRechargeRequest rechargeRequest) {
+        return true;
     }
 
     @Override

@@ -18,7 +18,7 @@ public class TaxiMeasurement {
     }
 
     public TaxiMeasurement(int id, int numberOfRides, float km, float battery, List<Measurement> pollutionMeasurements, long timestamp) {
-        if (km <= 0) {
+        if (km < 0) {
             throw new IllegalArgumentException("Expected positive distance");
         }
         if (battery < 0 || battery > 100) {
@@ -100,9 +100,9 @@ public class TaxiMeasurement {
         stringBuilder.append("Pollution measurements:\n[");
         for (Measurement m :
                 this.getPollutionMeasurements()) {
-            stringBuilder.append("\n").append(m.toString()).append("\n");
+            stringBuilder.append("\n").append(m.toString());
         }
-        stringBuilder.append("]");
+        stringBuilder.append("\n]");
         return stringBuilder.toString();
     }
 }

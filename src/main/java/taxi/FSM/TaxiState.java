@@ -5,7 +5,8 @@ import taxi.communication.TaxiComms;
 
 public interface TaxiState {
     void execute(Taxi taxi);
-    boolean decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest);
+    Boolean decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest);
+    Boolean canRecharge(Taxi taxi, TaxiComms.TaxiRechargeRequest rechargeRequest);
     void addTaxi(TaxiInfo taxi);
     void removeTaxi(TaxiInfo taxi);
 }

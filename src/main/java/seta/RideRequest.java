@@ -41,6 +41,6 @@ public class RideRequest {
 
     @Override
     public String toString() {
-        return "ID: " + this.requestId + "\nRide: " + this.ride;
+        return "ID: " + this.requestId + "\tRide: " + this.ride;
     }
 }

@@ -4,6 +4,7 @@ service TaxiCommunication {
   rpc Greet (TaxiGreeting) returns (TaxiGreetingResponse);
   rpc RequestRide (TaxiRideRequest) returns (TaxiRideResponse);
   rpc RequestLeave (TaxiRemovalRequest) returns (TaxiRemovalResponse);
+  rpc RequestRecharge (TaxiRechargeRequest) returns (TaxiRechargeResponse);
 }
 
 message Coordinates {
@@ -55,4 +56,12 @@ message TaxiRemovalRequest {
 
 message TaxiRemovalResponse {
   required bool ok = 1;
+}
+
+message TaxiRechargeRequest {
+  required Coordinates taxiPosition = 1;
+  required int64 timestamp = 2;
+}
+
+message TaxiRechargeResponse {
 }

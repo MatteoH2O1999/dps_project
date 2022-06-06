@@ -19,7 +19,7 @@ public class SensorBuffer implements Buffer {
     }
 
     private synchronized void updateMeasurements() {
-        Measurement sample = this.measurements.get(0);
+        Measurement sample = this.measurementWindow.get(0);
         String id = sample.getId();
         String type = sample.getType();
         double avg = 0.0;

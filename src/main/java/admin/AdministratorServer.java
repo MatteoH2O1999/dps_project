@@ -200,7 +200,7 @@ public class AdministratorServer {
     @Path("measure")
     @Consumes({"application/xml", "application/json"})
     public Response addMeasurement(TaxiMeasurement taxiMeasurement) {
-        System.out.println("Adding measurement:" + taxiMeasurement.toString() + "\n");
+        System.out.println("Adding measurement:\n" + taxiMeasurement.toString() + "\n");
         Server.getInstance().addTaxiMeasurement(taxiMeasurement);
         return Response.ok().build();
     }

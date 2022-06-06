@@ -4,8 +4,8 @@ import taxi.*;
 import taxi.FSM.TaxiState;
 import taxi.communication.TaxiComms;
 
-public class Terminating implements TaxiState {
-    public final static Terminating TERMINATING = new Terminating();
+public class Recharging implements TaxiState {
+    public final static Recharging RECHARGING = new Recharging();
 
     @Override
     public void execute(Taxi taxi) {

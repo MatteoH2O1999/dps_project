@@ -7,10 +7,10 @@ import io.grpc.stub.StreamObserver;
 import org.eclipse.paho.client.mqttv3.*;
 import sensors.*;
 import seta.*;
+import taxi.FSM.*;
 import taxi.communication.*;
 import taxi.communication.TaxiCommunicationGrpc.TaxiCommunicationImplBase;
 import taxi.FSM.States.Idle;
-import taxi.FSM.TaxiState;
 
 import java.io.*;
 import java.util.*;
@@ -59,7 +59,7 @@ class TaxiProcess {
         do {
             System.out.println("Write 'recharge' to recharge the taxi, 'quit' to gently stop the taxi or 'do nothing' to do absolutely nothing");
             try {
-                System.out.println("Insert address:");
+                System.out.println("Insert action:");
                 input = userInput.readLine();
             } catch (IOException e) {
                 System.out.println("Something is wrong with your keyboard.");
@@ -90,6 +90,7 @@ public class Taxi extends Thread{
     public final int id;
     public final String address;
     public final int port;
+    public final TaxiStateInfo stateInfo = new TaxiStateInfo();
 
     public Server server;
     public MqttClient mqttClient;
@@ -101,7 +102,7 @@ public class Taxi extends Thread{
     private volatile boolean running = true;
     private TaxiState currentState;
 
-    private final List<TaxiInfo> otherTaxis;
+    private final List<TaxiInfo> otherTaxis = new ArrayList<>();
     private Coordinate currentPosition;
     private float battery = 100.0F;
     private int completedRides = 0;
@@ -117,7 +118,7 @@ public class Taxi extends Thread{
 
     public Taxi(int id, String address, int port) {
         Client client = Client.create();
-        String webAddress = "http//" + TaxiProcess.address + ":" + TaxiProcess.port + TaxiProcess.addPath;
+        String webAddress = "http://" + TaxiProcess.address + ":" + TaxiProcess.port + TaxiProcess.addPath;
         WebResource webResource = client.resource(webAddress);
         TaxiInfo taxiRequest = new TaxiInfo(id, address, port);
         String request = new Gson().toJson(taxiRequest);
@@ -130,7 +131,12 @@ public class Taxi extends Thread{
         this.id = id;
         this.address = address;
         this.port = port;
-        this.otherTaxis = taxiInsertionResponse.getTaxis();
+        this.otherTaxis.clear();
+        List<TaxiInfo> taxis = taxiInsertionResponse.getTaxis();
+        if (taxis == null) {
+            taxis = new ArrayList<>();
+        }
+        this.otherTaxis.addAll(taxis);
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
         this.pm10Sensor.start();
@@ -169,7 +175,11 @@ public class Taxi extends Thread{
         this.id = taxiInfo.getId();
         this.address = taxiInfo.getIpAddress();
         this.port = taxiInfo.getPort();
-        this.otherTaxis = otherTaxis;
+        this.otherTaxis.clear();
+        if (otherTaxis == null) {
+            otherTaxis = new ArrayList<>();
+        }
+        this.otherTaxis.addAll(otherTaxis);
         this.sensorBuffer = new SensorBuffer();
         this.pm10Sensor = new PM10Simulator(this.sensorBuffer);
         this.pm10Sensor.start();
@@ -250,11 +260,15 @@ public class Taxi extends Thread{
                 completedAckList.add(greetingThread.getCompletedAck());
             }
         }
-        this.setAck(Collections.min(receivedAckList), Collections.min(completedAckList));
+        if (receivedAckList.size() == 0) {
+            this.setAck(0, 0);
+        } else {
+            this.setAck(Collections.min(receivedAckList), Collections.min(completedAckList));
+        }
     }
 
     private void initializeMQTT() throws MqttException {
-        this.mqttClient = new MqttClient("ftp://" + this.address + ":" + this.port, this.id + "-" + this.port);
+        this.mqttClient = new MqttClient("tcp://" + SETA.address + ":" + SETA.port, this.id + "-" + this.port);
         MqttConnectOptions connectOptions = new MqttConnectOptions();
         connectOptions.setCleanSession(true);
         connectOptions.setKeepAliveInterval(60);
@@ -273,12 +287,12 @@ public class Taxi extends Thread{
                     RideRequestPinned rideRequestPinned = gson.fromJson(new String(message.getPayload()), RideRequestPinned.class);
                     if (requests == null) {
                         System.out.println("Taxi is receiving from current district for the first time.");
-                        System.out.println("Ride requests:" + rideRequestPinned.getAllRides().toString());
+                        System.out.println("Ride requests:\n" + rideRequestPinned.getAllRides().toString());
                         requests = rideRequestPinned.getAllRides();
                         updateRequests();
                     } else {
                         RideRequest newRequest = new RideRequest(rideRequestPinned.getRequestId(), rideRequestPinned.getNewRide());
-                        System.out.println("Taxi is receiving a new ride request: " + newRequest);
+                        System.out.println("Taxi is receiving a new ride request:\n" + newRequest);
                         if (!requests.contains(newRequest)) {
                             requests.add(newRequest);
                             updateRequests();
@@ -323,6 +337,7 @@ public class Taxi extends Thread{
             return;
         }
         this.requests.removeIf(rideRequest -> rideRequest.getRequestId() <= this.completedElectionAck);
+        notifyAll();
     }
 
     private synchronized void addTaxi(TaxiInfo taxiInfo) {
@@ -369,11 +384,11 @@ public class Taxi extends Thread{
     }
 
     public synchronized void setAck(int receivedAck, int completedAck) {
-        int oldReceived = this.receivedElectionAck;
-        int oldCompleted = this.completedElectionAck;
+        Integer oldReceived = this.receivedElectionAck;
+        Integer oldCompleted = this.completedElectionAck;
         this.receivedElectionAck = receivedAck;
         this.completedElectionAck = completedAck;
-        if ((this.receivedElectionAck != oldReceived) || (this.completedElectionAck != oldCompleted)) {
+        if ((!this.receivedElectionAck.equals(oldReceived)) || (!this.completedElectionAck.equals(oldCompleted))) {
             notifyAll();
         }
     }
@@ -459,11 +474,21 @@ public class Taxi extends Thread{
             if (this.decisions.contains(requestId)) {
                 return false;
             }
-            boolean decision = this.getCurrentState().decide(this, rideRequest);
+            Boolean decision = null;
+            while (decision == null) {
+                decision = this.getCurrentState().decide(this, rideRequest);
+            }
             if (!decision) {
                 this.decisions.add(requestId);
             }
             return decision;
+        }
+    }
+
+    public void awaitRecharge(TaxiComms.TaxiRechargeRequest rechargeRequest) {
+        Boolean decision = null;
+        while (decision == null) {
+            decision = this.getCurrentState().canRecharge(this, rechargeRequest);
         }
     }
 
@@ -536,6 +561,15 @@ public class Taxi extends Thread{
             responseObserver.onNext(taxiRemovalResponse);
             responseObserver.onCompleted();
         }
+
+        @Override
+        public void requestRecharge(TaxiComms.TaxiRechargeRequest request, StreamObserver<TaxiComms.TaxiRechargeResponse> responseObserver) {
+            System.out.println("Received recharge request from:\n" + request.toString());
+            awaitRecharge(request);
+            TaxiComms.TaxiRechargeResponse response = TaxiComms.TaxiRechargeResponse.newBuilder().build();
+            responseObserver.onNext(response);
+            responseObserver.onCompleted();
+        }
     }
 
     class GreetingThread extends Thread {
@@ -598,7 +632,7 @@ class InformationThread extends Thread {
         this.taxi = taxi;
         this.sensorBuffer = sensorBuffer;
         Client client = Client.create();
-        String address = "http//" + TaxiProcess.address + ":" + TaxiProcess.port + TaxiProcess.infoPath;
+        String address = "http://" + TaxiProcess.address + ":" + TaxiProcess.port + TaxiProcess.infoPath;
         this.webResource = client.resource(address);
     }
 
