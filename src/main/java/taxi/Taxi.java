@@ -340,14 +340,14 @@ public class Taxi extends Thread{
         notifyAll();
     }
 
-    private synchronized void addTaxi(TaxiInfo taxiInfo) {
+    public synchronized void addTaxi(TaxiInfo taxiInfo) {
         if (this.otherTaxis.contains(taxiInfo)) {
             return;
         }
         this.otherTaxis.add(taxiInfo);
     }
 
-    private synchronized void removeTaxi(TaxiInfo taxiInfo) {
+    public synchronized void removeTaxi(TaxiInfo taxiInfo) {
         if (!this.otherTaxis.contains(taxiInfo)) {
             return;
         }
@@ -399,10 +399,12 @@ public class Taxi extends Thread{
 
     public void requestRecharge() {
         this.rechargeRequested = true;
+        notifyAll();
     }
 
     public void requestExit() {
         this.exitRequested = true;
+        notifyAll();
     }
 
     public void setRechargeRequested(Boolean rechargeRequested) {
@@ -422,10 +424,16 @@ public class Taxi extends Thread{
     }
 
     public synchronized int getCompletedElectionAck() {
+        if (this.completedElectionAck == null) {
+            return 0;
+        }
         return completedElectionAck;
     }
 
     public synchronized int getReceivedElectionAck() {
+        if (this.receivedElectionAck == null) {
+            return 0;
+        }
         return receivedElectionAck;
     }
 
@@ -510,6 +518,40 @@ public class Taxi extends Thread{
         }
     }
 
+    private void requestAddTaxi(TaxiInfo taxiInfo) {
+        Boolean result = null;
+        while (result == null) {
+            result = this.getCurrentState().addTaxi(this, taxiInfo);
+        }
+        if (!result) {
+            throw new RuntimeException("Failure to add taxi");
+        }
+    }
+
+    private void requestRemoveTaxi(TaxiInfo taxiInfo) {
+        Boolean result = null;
+        while (result == null) {
+            result = this.getCurrentState().removeTaxi(this, taxiInfo);
+        }
+        if (!result) {
+            throw new RuntimeException("Failure in removing taxi");
+        }
+    }
+
+    public synchronized RideRequest getNextRequest() {
+        RideRequest request = null;
+        for (RideRequest rideRequest :
+                this.requests) {
+            if (request == null) {
+                request = rideRequest;
+            }
+            if (rideRequest.getRequestId() < request.getRequestId()) {
+                request = rideRequest;
+            }
+        }
+        return request;
+    }
+
     class GrpcService extends TaxiCommunicationImplBase {
         @Override
         public void greet(TaxiComms.TaxiGreeting request, StreamObserver<TaxiComms.TaxiGreetingResponse> responseObserver) {
@@ -518,7 +560,7 @@ public class Taxi extends Thread{
             TaxiComms.TaxiInformation taxiInformation = request.getTaxiInfo();
             TaxiComms.Coordinates coordinates = request.getStartingPosition();
             TaxiInfo toAdd = new TaxiInfo(taxiInformation.getId(), taxiInformation.getAddress(), taxiInformation.getPort());
-            getCurrentState().addTaxi(toAdd);
+            requestAddTaxi(toAdd);
             TaxiComms.TaxiGreetingResponse taxiGreetingResponse = TaxiComms.TaxiGreetingResponse.newBuilder()
                     .setOk(true)
                     .setReceivedAck(receivedElectionAck)
@@ -553,7 +595,7 @@ public class Taxi extends Thread{
                         .setOk(false)
                         .build();
             } else {
-                getCurrentState().removeTaxi(toRemove);
+                requestRemoveTaxi(toRemove);
                 taxiRemovalResponse = TaxiComms.TaxiRemovalResponse.newBuilder()
                         .setOk(true)
                         .build();
@@ -610,9 +652,6 @@ public class Taxi extends Thread{
         public int receivedAck;
         public int completedAck;
 
-        public AckPair() {
-        }
-
         public AckPair(int receivedAck, int completedAck) {
             this.receivedAck = receivedAck;
             this.completedAck = completedAck;
@@ -657,6 +696,7 @@ class InformationThread extends Thread {
         taxiMeasurement.setKm(this.taxi.getCompletedKm());
         taxiMeasurement.setPollutionMeasurements(this.sensorBuffer.readAllAndClean());
         taxiMeasurement.setTimestamp(System.currentTimeMillis());
+        this.taxi.resetRide();
         String jsonRequest = this.gson.toJson(taxiMeasurement);
         ClientResponse clientResponse = this.webResource.type("application/json").post(ClientResponse.class, jsonRequest);
         if (clientResponse.getStatus() != 200) {

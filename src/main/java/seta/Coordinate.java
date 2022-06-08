@@ -1,5 +1,7 @@
 package seta;
 
+import taxi.communication.TaxiComms;
+
 public class Coordinate {
     private int x, y;
 
@@ -9,6 +11,11 @@ public class Coordinate {
     public Coordinate(int x, int y) {
         this.x = x;
         this.y = y;
+    }
+
+    public Coordinate(TaxiComms.Coordinates coordinates) {
+        this.x = coordinates.getX();
+        this.y = coordinates.getY();
     }
 
     public int getX() {

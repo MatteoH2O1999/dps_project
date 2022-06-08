@@ -22,10 +22,12 @@ public class Electing implements TaxiState {
     }
 
     @Override
-    public void addTaxi(TaxiInfo taxi) {
+    public Boolean addTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        return null;
     }
 
     @Override
-    public void removeTaxi(TaxiInfo taxi) {
+    public Boolean removeTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        return null;
     }
 }
