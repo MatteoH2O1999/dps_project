@@ -1,48 +1,72 @@
 package taxi.FSM.States;
 
+import com.sun.jersey.api.client.*;
 import seta.*;
 import taxi.*;
-import taxi.FSM.TaxiState;
+import taxi.FSM.*;
 import taxi.communication.TaxiComms;
 
 public class Idle implements TaxiState {
+    private final static String address = "localhost";
+    private final static int port = 1338;
+    private final static String deletePath = "/server/delete/";
+
     public final static Idle IDLE = new Idle();
 
     @Override
     public void execute(Taxi taxi) {
-        if (taxi.getExitRequested()) {
-            taxi.setCurrentState(Terminating.TERMINATING);
-            return;
-        } else if (taxi.getRechargeRequested()) {
+        System.out.println("Checking if recharge is requested...");
+        if (taxi.getRechargeRequested()) {
+            taxi.stateInfo.setTimestamp(System.currentTimeMillis());
             taxi.setCurrentState(Recharging.RECHARGING);
             return;
         }
+        System.out.println("Checking if exit is requested...");
+        if (taxi.getExitRequested()) {
+            Client client = Client.create();
+            String webAddress = "http://" + Idle.address + ":" + Idle.port + Idle.deletePath + taxi.id;
+            WebResource webResource = client.resource(webAddress);
+            ClientResponse clientResponse = webResource.delete(ClientResponse.class);
+            if (clientResponse.getStatus() != 200) {
+                throw new RuntimeException("Error while communicating removal to the server");
+            }
+            taxi.setCurrentState(Terminating.TERMINATING);
+            return;
+        }
+        System.out.println("Checking if recharge is required...");
+        if (taxi.getBattery() < 30) {
+            taxi.stateInfo.setTimestamp(System.currentTimeMillis());
+            taxi.setCurrentState(Recharging.RECHARGING);
+            return;
+        }
+        System.out.println("Getting next request");
         RideRequest nextRequest = taxi.getNextRequest();
-        if ((nextRequest != null) && (taxi.getCompletedElectionAck() < nextRequest.getRequestId()) && (taxi.getReceivedElectionAck() <= nextRequest.getRequestId())) {
+        System.out.println("Next request: " + nextRequest);
+        if ((nextRequest != null) && (taxi.getCompletedElectionAck() < nextRequest.getRequestId())) {
+            System.out.println("Starting election...");
             taxi.stateInfo.setCurrentRequest(nextRequest);
             taxi.setCurrentState(Electing.ELECTING);
         } else {
+            System.out.println("Awaiting change...");
             try {
                 taxi.awaitChange();
             } catch (InterruptedException e) {
                 System.out.println("Interrupted wait in IDLE.execute");
                 throw new RuntimeException(e);
             }
+            System.out.println("Detected change...");
         }
     }
 
     @Override
-    public Boolean decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest) {
+    public Decision decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest) {
         Coordinate rideStartingCoordinate = new Coordinate(rideRequest.getRideInfo().getRideStart());
         Coordinate currentTaxiPosition = taxi.getCurrentPosition();
         if (!District.fromCoordinate(rideStartingCoordinate).equals(District.fromCoordinate(currentTaxiPosition))) {
-            return false;
+            return new Decision(false, true);
         }
         if (rideRequest.getRideInfo().getRequestId() <= taxi.getCompletedElectionAck()) {
-            return true;
-        }
-        if (rideRequest.getRideInfo().getRequestId() < taxi.getReceivedElectionAck()) {
-            return true;
+            return new Decision(true, true);
         }
         try {
             taxi.awaitChange();

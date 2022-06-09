@@ -44,8 +44,6 @@ message TaxiGreeting {
 message TaxiGreetingResponse {
   required bool ok = 1;
   required Coordinates taxiPosition = 2;
-  required int32 receivedAck = 3;
-  required int32 completedAck = 4;
 }
 
 message TaxiRemovalRequest {

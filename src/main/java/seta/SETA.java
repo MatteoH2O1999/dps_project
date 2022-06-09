@@ -77,6 +77,7 @@ public class SETA extends Thread{
     private void initializeSETA() {
         this.initializeMQTTClient();
         this.initializeMQTTCallback();
+        this.setUpPinnedAck();
         this.initializeSubscriptions();
     }
 
@@ -121,6 +122,21 @@ public class SETA extends Thread{
             public void deliveryComplete(IMqttDeliveryToken token) {
             }
         });
+    }
+
+    private void setUpPinnedAck() {
+        Gson gson = new Gson();
+        RideAck ack = new RideAck(0);
+        MqttMessage message = new MqttMessage(gson.toJson(ack).getBytes());
+        message.setRetained(true);
+        message.setQos(1);
+        for (int i = 1; i <= SETA.numberOfDistricts; i++) {
+            try {
+                this.mqttClient.publish(MQTTTopics.getAckTopic(new District(i)), message);
+            } catch (MqttException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 
     private void initializeSubscriptions() {
@@ -203,7 +219,7 @@ public class SETA extends Thread{
 
     private void updateRideList(District d) {
         List<RideRequest> listToUpdate = this.oldRideRequests.get(d.getId() - 1);
-        int lastConfirmedAck = this.rideAck[d.getId()];
+        int lastConfirmedAck = this.rideAck[d.getId() - 1];
         listToUpdate.removeIf(request -> request.getRequestId() <= lastConfirmedAck);
     }
 
@@ -233,8 +249,9 @@ public class SETA extends Thread{
     }
 
     private synchronized void updateAck(District d, int newValue) {
-        int oldValue = this.rideAck[d.getId()];
-        this.rideAck[d.getId()] = newValue;
+        int oldValue = this.rideAck[d.getId() - 1];
+        this.rideAck[d.getId() - 1] = newValue;
+        System.out.println("Ack of district " + d.getId() + " from " + oldValue + " to " + newValue);
         if (oldValue != newValue) {
             this.updateRideList(d);
             this.sendUpdate(d);

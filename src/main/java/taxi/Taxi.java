@@ -96,8 +96,8 @@ public class Taxi extends Thread{
     public MqttClient mqttClient;
 
     private final Buffer sensorBuffer;
-    public final PM10Simulator pm10Sensor;
-    public final InformationThread informationThread;
+    private final PM10Simulator pm10Sensor;
+    private final InformationThread informationThread;
 
     private volatile boolean running = true;
     private TaxiState currentState;
@@ -108,10 +108,9 @@ public class Taxi extends Thread{
     private int completedRides = 0;
     private float completedKm = 0.0F;
 
-    private Integer receivedElectionAck = null;
     private Integer completedElectionAck = null;
     private List<RideRequest> requests = null;
-    private final HashSet<Integer> decisions = new HashSet<>();
+    private final HashMap<Integer, Boolean> decisions = new HashMap<>();
 
     private volatile Boolean rechargeRequested = false;
     private volatile Boolean exitRequested = false;
@@ -160,7 +159,6 @@ public class Taxi extends Thread{
             System.out.println("Interrupted while greeting");
             throw new RuntimeException(e);
         }
-        this.initAck(threads);
         try {
             this.initializeMQTT();
         } catch (MqttException e) {
@@ -203,7 +201,6 @@ public class Taxi extends Thread{
             System.out.println("Interrupted while greeting");
             throw new RuntimeException(e);
         }
-        this.initAck(threads);
         try {
             this.initializeMQTT();
         } catch (MqttException e) {
@@ -222,10 +219,8 @@ public class Taxi extends Thread{
         }
     }
 
-    private AckPair sayHello(TaxiInfo taxiInfo) {
-        AckPair toReturn;
+    private void sayHello(TaxiInfo taxiInfo) {
         Coordinate coordinate = this.getCurrentPosition();
-        District district = District.fromCoordinate(coordinate);
         ManagedChannel channel = ManagedChannelBuilder.forAddress(taxiInfo.getIpAddress(), taxiInfo.getPort()).usePlaintext().build();
         TaxiCommunicationGrpc.TaxiCommunicationBlockingStub stub = TaxiCommunicationGrpc.newBlockingStub(channel);
         TaxiComms.TaxiGreeting greetingRequest = TaxiComms.TaxiGreeting.newBuilder()
@@ -241,29 +236,8 @@ public class Taxi extends Thread{
                 .build();
         TaxiComms.TaxiGreetingResponse response = stub.greet(greetingRequest);
         channel.shutdown();
-        Coordinate otherCoordinate = new Coordinate(response.getTaxiPosition().getX(), response.getTaxiPosition().getY());
-        District otherDistrict = District.fromCoordinate(otherCoordinate);
-        if ((!district.equals(otherDistrict)) || (!response.getOk())) {
-            return null;
-        }
-        toReturn = new AckPair(response.getReceivedAck(), response.getCompletedAck());
-        return toReturn;
-    }
-
-    private void initAck(List<GreetingThread> threads) {
-        List<Integer> receivedAckList = new ArrayList<>();
-        List<Integer> completedAckList = new ArrayList<>();
-        for (GreetingThread greetingThread :
-                threads) {
-            if (greetingThread.isRelevant()) {
-                receivedAckList.add(greetingThread.getReceivedAck());
-                completedAckList.add(greetingThread.getCompletedAck());
-            }
-        }
-        if (receivedAckList.size() == 0) {
-            this.setAck(0, 0);
-        } else {
-            this.setAck(Collections.min(receivedAckList), Collections.min(completedAckList));
+        if (!response.getOk()) {
+            throw new RuntimeException("Error while greeting");
         }
     }
 
@@ -281,6 +255,7 @@ public class Taxi extends Thread{
 
             @Override
             public void messageArrived(String topic, MqttMessage message) throws Exception {
+                System.out.println("Received message from " + topic);
                 Gson gson = new Gson();
                 if (MQTTTopics.isRideTopic(topic)) {
                     System.out.println("Received message from a ride topic: " + topic);
@@ -293,16 +268,20 @@ public class Taxi extends Thread{
                     } else {
                         RideRequest newRequest = new RideRequest(rideRequestPinned.getRequestId(), rideRequestPinned.getNewRide());
                         System.out.println("Taxi is receiving a new ride request:\n" + newRequest);
-                        if (!requests.contains(newRequest)) {
-                            requests.add(newRequest);
-                            updateRequests();
+                        if (rideRequestPinned.getNewRide() != null) {
+                            System.out.println("Request is not null...");
+                            if (!requests.contains(newRequest)) {
+                                System.out.println("Adding request...");
+                                requests.add(newRequest);
+                                updateRequests();
+                            }
                         }
                     }
                 } else if (MQTTTopics.isAckTopic(topic)) {
                     System.out.println("Received message from an ack topic: " + topic);
                     RideAck rideAck = gson.fromJson(new String(message.getPayload()), RideAck.class);
                     System.out.println("Ack: " + rideAck.toString());
-                    setAck(rideAck.getElectionAck(), rideAck.getRideAck());
+                    setAck(rideAck.getRideAck());
                     updateRequests();
                 } else {
                     throw new RuntimeException("What???");
@@ -337,6 +316,7 @@ public class Taxi extends Thread{
             return;
         }
         this.requests.removeIf(rideRequest -> rideRequest.getRequestId() <= this.completedElectionAck);
+        System.out.println("Requests updated, notifying everyone of the change...");
         notifyAll();
     }
 
@@ -360,6 +340,7 @@ public class Taxi extends Thread{
 
     public synchronized void setCurrentState(TaxiState currentState) {
         this.currentState = currentState;
+        System.out.println("New state: " + currentState.getClass().getSimpleName());
         notifyAll();
     }
 
@@ -380,15 +361,14 @@ public class Taxi extends Thread{
     }
 
     public synchronized void setCurrentPosition(Coordinate currentPosition) {
+        System.out.println("New position: " + currentPosition);
         this.currentPosition = currentPosition;
     }
 
-    public synchronized void setAck(int receivedAck, int completedAck) {
-        Integer oldReceived = this.receivedElectionAck;
+    public synchronized void setAck(int completedAck) {
         Integer oldCompleted = this.completedElectionAck;
-        this.receivedElectionAck = receivedAck;
         this.completedElectionAck = completedAck;
-        if ((!this.receivedElectionAck.equals(oldReceived)) || (!this.completedElectionAck.equals(oldCompleted))) {
+        if (!this.completedElectionAck.equals(oldCompleted)) {
             notifyAll();
         }
     }
@@ -397,29 +377,29 @@ public class Taxi extends Thread{
         wait();
     }
 
-    public void requestRecharge() {
+    public synchronized void requestRecharge() {
         this.rechargeRequested = true;
         notifyAll();
     }
 
-    public void requestExit() {
+    public synchronized void requestExit() {
         this.exitRequested = true;
         notifyAll();
     }
 
-    public void setRechargeRequested(Boolean rechargeRequested) {
+    public synchronized void setRechargeRequested(Boolean rechargeRequested) {
         this.rechargeRequested = rechargeRequested;
     }
 
-    public Boolean getRechargeRequested() {
+    public synchronized Boolean getRechargeRequested() {
         return rechargeRequested;
     }
 
-    public void setExitRequested(Boolean exitRequested) {
+    public synchronized void setExitRequested(Boolean exitRequested) {
         this.exitRequested = exitRequested;
     }
 
-    public Boolean getExitRequested() {
+    public synchronized Boolean getExitRequested() {
         return exitRequested;
     }
 
@@ -430,24 +410,14 @@ public class Taxi extends Thread{
         return completedElectionAck;
     }
 
-    public synchronized int getReceivedElectionAck() {
-        if (this.receivedElectionAck == null) {
-            return 0;
-        }
-        return receivedElectionAck;
-    }
-
-    public void setCompletedElectionAck(int completedElectionAck) {
+    public void setCompletedElectionAck(Integer completedElectionAck) {
         this.completedElectionAck = completedElectionAck;
-    }
-
-    public void setReceivedElectionAck(int receivedElectionAck) {
-        this.receivedElectionAck = receivedElectionAck;
     }
 
     public synchronized void completeRide(float completedKm) {
         this.completedRides++;
         this.completedKm += completedKm;
+        this.battery -= completedKm;
     }
 
     public synchronized void resetRide() {
@@ -479,17 +449,38 @@ public class Taxi extends Thread{
     public boolean getDecision(TaxiComms.TaxiRideRequest rideRequest) {
         int requestId = rideRequest.getRideInfo().getRequestId();
         synchronized (this.decisions) {
-            if (this.decisions.contains(requestId)) {
-                return false;
+            if (this.decisions.containsKey(requestId)) {
+                return this.decisions.get(requestId);
             }
-            Boolean decision = null;
+            Decision decision = null;
             while (decision == null) {
                 decision = this.getCurrentState().decide(this, rideRequest);
             }
-            if (!decision) {
-                this.decisions.add(requestId);
+            if (decision.save) {
+                this.decisions.put(requestId, decision.decision);
             }
-            return decision;
+            return decision.decision;
+        }
+    }
+
+    public Boolean getDecision(int requestId) {
+        synchronized (this.decisions) {
+            if (this.decisions.containsKey(requestId)) {
+                return this.decisions.get(requestId);
+            }
+        }
+        return null;
+    }
+
+    public void setDecision(int requestId, boolean decision) {
+        synchronized (this.decisions) {
+            if (this.decisions.containsKey(requestId)) {
+                if (this.decisions.get(requestId) != decision) {
+                    throw new RuntimeException("Decision map is no longer synchronized");
+                }
+                return;
+            }
+            this.decisions.put(requestId, decision);
         }
     }
 
@@ -498,9 +489,13 @@ public class Taxi extends Thread{
         while (decision == null) {
             decision = this.getCurrentState().canRecharge(this, rechargeRequest);
         }
+        if (!decision) {
+            throw new RuntimeException("Error in requesting recharge");
+        }
     }
 
     public void mqttSubscribe(String topic, int qos) {
+        System.out.println("Subscribing to " + topic);
         try {
             this.mqttClient.subscribe(topic, qos);
         } catch (MqttException e) {
@@ -510,6 +505,7 @@ public class Taxi extends Thread{
     }
 
     public void mqttUnsubscribe(String topic) {
+        System.out.println("Unsubscribing from " + topic);
         try {
             this.mqttClient.unsubscribe(topic);
         } catch (MqttException e) {
@@ -539,6 +535,9 @@ public class Taxi extends Thread{
     }
 
     public synchronized RideRequest getNextRequest() {
+        if (this.requests == null) {
+            return null;
+        }
         RideRequest request = null;
         for (RideRequest rideRequest :
                 this.requests) {
@@ -552,6 +551,17 @@ public class Taxi extends Thread{
         return request;
     }
 
+    public synchronized void clearRequests() {
+        this.requests = null;
+    }
+
+    public void stopSensors() throws InterruptedException {
+        this.pm10Sensor.stopMeGently();
+        this.informationThread.shutdown();
+        this.pm10Sensor.join();
+        this.informationThread.join();
+    }
+
     class GrpcService extends TaxiCommunicationImplBase {
         @Override
         public void greet(TaxiComms.TaxiGreeting request, StreamObserver<TaxiComms.TaxiGreetingResponse> responseObserver) {
@@ -563,8 +573,6 @@ public class Taxi extends Thread{
             requestAddTaxi(toAdd);
             TaxiComms.TaxiGreetingResponse taxiGreetingResponse = TaxiComms.TaxiGreetingResponse.newBuilder()
                     .setOk(true)
-                    .setReceivedAck(receivedElectionAck)
-                    .setCompletedAck(completedElectionAck)
                     .setTaxiPosition(TaxiComms.Coordinates.newBuilder()
                             .setX(currentCoordinates.getX())
                             .setY(currentCoordinates.getY())
@@ -616,9 +624,6 @@ public class Taxi extends Thread{
 
     class GreetingThread extends Thread {
         private final TaxiInfo taxiInfo;
-        private int receivedAck;
-        private int completedAck;
-        private boolean relevant = true;
 
         public GreetingThread(TaxiInfo info) {
             this.taxiInfo = info;
@@ -626,35 +631,8 @@ public class Taxi extends Thread{
 
         @Override
         public void run() {
-            AckPair ackPair = sayHello(this.taxiInfo);
-            if (ackPair == null) {
-                relevant = false;
-            } else {
-                this.receivedAck = ackPair.receivedAck;
-                this.completedAck = ackPair.completedAck;
-            }
-        }
-
-        public int getCompletedAck() {
-            return completedAck;
-        }
-
-        public int getReceivedAck() {
-            return receivedAck;
-        }
-
-        public boolean isRelevant() {
-            return relevant;
-        }
-    }
-
-    static class AckPair {
-        public int receivedAck;
-        public int completedAck;
-
-        public AckPair(int receivedAck, int completedAck) {
-            this.receivedAck = receivedAck;
-            this.completedAck = completedAck;
+            System.out.println("Greeting taxi: " + this.taxiInfo);
+            sayHello(this.taxiInfo);
         }
     }
 }
