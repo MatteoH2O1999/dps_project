@@ -14,9 +14,11 @@ public class Terminating implements TaxiState {
 
     @Override
     public void execute(Taxi taxi) {
+        System.out.println("Starting shutdown...");
         District currentDistrict = District.fromCoordinate(taxi.getCurrentPosition());
         taxi.mqttUnsubscribe(MQTTTopics.getAckTopic(currentDistrict));
         taxi.mqttUnsubscribe(MQTTTopics.getRideTopic(currentDistrict));
+        System.out.println("Sending termination requests to all other taxis...");
         List<TaxiInfo> taxis = taxi.getTaxis();
         Map<Integer, TerminatingThread> terminatingThreads = new HashMap<>();
         Map<Integer, Thread> threads = new HashMap<>();
@@ -41,15 +43,19 @@ public class Terminating implements TaxiState {
                 throw new RuntimeException("Error in grpc remove taxi in TERMINATING.execute");
             }
         });
+        System.out.println("Requests accepted...");
         try {
+            System.out.println("Shutting down mqtt...");
             taxi.mqttClient.disconnect();
             taxi.mqttClient.close();
         } catch (MqttException e) {
             System.out.println("Error in disconnecting from MQTT in TERMINATING.execute");
             throw new RuntimeException(e);
         }
+        System.out.println("Shutting down grpc...");
         taxi.server.shutdown();
         try {
+            System.out.println("Stopping sensors...");
             taxi.stopSensors();
         } catch (InterruptedException e) {
             System.out.println("Join interrupted while stopping sensors");
@@ -57,15 +63,18 @@ public class Terminating implements TaxiState {
         }
         taxi.setExitRequested(false);
         taxi.stopRunning();
+        System.out.println("Everything stopped...");
     }
 
     @Override
     public Decision decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest) {
+        System.out.println("I'm terminating. Leave me alone...");
         return new Decision(false, true);
     }
 
     @Override
     public Boolean canRecharge(Taxi taxi, TaxiComms.TaxiRechargeRequest rechargeRequest) {
+        System.out.println("I'm terminating. Recharge request " + rechargeRequest + " is granted...");
         return true;
     }
 
@@ -76,6 +85,7 @@ public class Terminating implements TaxiState {
 
     @Override
     public Boolean removeTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        System.out.println("As soon as closing threads are started I'll interrupt yours: " + taxiInfo);
         try {
             taxi.stateInfo.interruptClosingThread(taxiInfo.getId());
         } catch (InterruptedException e) {

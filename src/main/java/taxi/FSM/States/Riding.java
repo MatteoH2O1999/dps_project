@@ -10,6 +10,7 @@ public class Riding implements TaxiState {
 
     @Override
     public void execute(Taxi taxi) {
+        System.out.println("Starting ride " + taxi.stateInfo.getCurrentRequest());
         District currentDistrict = District.fromCoordinate(taxi.getCurrentPosition());
         taxi.mqttUnsubscribe(MQTTTopics.getAckTopic(currentDistrict));
         taxi.mqttUnsubscribe(MQTTTopics.getRideTopic(currentDistrict));
@@ -34,22 +35,26 @@ public class Riding implements TaxiState {
 
     @Override
     public Decision decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest) {
+        System.out.println("I'm riding. Other taxis can handle this...");
         return new Decision(false, true);
     }
 
     @Override
     public Boolean canRecharge(Taxi taxi, TaxiComms.TaxiRechargeRequest rechargeRequest) {
+        System.out.println("I'm riding. Recharge request " + rechargeRequest + " is granted...");
         return true;
     }
 
     @Override
     public Boolean addTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        System.out.println("I'm riding. Adding taxi " + taxiInfo + "...");
         taxi.addTaxi(taxiInfo);
         return true;
     }
 
     @Override
     public Boolean removeTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        System.out.println("I'm riding. Removing taxi " + taxiInfo + "...");
         taxi.removeTaxi(taxiInfo);
         return true;
     }

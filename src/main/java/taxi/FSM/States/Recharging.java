@@ -13,11 +13,13 @@ public class Recharging implements TaxiState {
 
     @Override
     public void execute(Taxi taxi) {
+        System.out.println("Starting recharge procedure...");
         District district = District.fromCoordinate(taxi.getCurrentPosition());
         taxi.mqttUnsubscribe(MQTTTopics.getAckTopic(district));
         taxi.mqttUnsubscribe(MQTTTopics.getRideTopic(district));
         taxi.setCompletedElectionAck(null);
         taxi.clearRequests();
+        System.out.println("Sending recharge requests to all taxis...");
         List<TaxiInfo> taxis = taxi.getTaxis();
         List<RechargeRequestThread> threads = new ArrayList<>();
         for (TaxiInfo taxiInfo :
@@ -37,6 +39,7 @@ public class Recharging implements TaxiState {
             System.out.println("Interrupted join in RECHARGING.execute");
             throw new RuntimeException(e);
         }
+        System.out.println("Recharge requests have all been accepted. Going to recharge station...");
         try {
             Thread.sleep(5000);
         } catch (InterruptedException e) {
@@ -46,12 +49,14 @@ public class Recharging implements TaxiState {
         taxi.setRechargeRequested(false);
         taxi.stateInfo.clearTimestamp();
         taxi.setCurrentPosition(district.getRechargeStation());
+        System.out.println("Recharging...");
         try {
             Thread.sleep(10000);
         } catch (InterruptedException e) {
             System.out.println("Interrupted sleep in RECHARGING.execute");
             throw new RuntimeException(e);
         }
+        System.out.println("Recharge completed...");
         taxi.setBattery(100);
         taxi.mqttSubscribe(MQTTTopics.getRideTopic(district), 1);
         taxi.mqttSubscribe(MQTTTopics.getAckTopic(district), 1);
@@ -60,6 +65,7 @@ public class Recharging implements TaxiState {
 
     @Override
     public Decision decide(Taxi taxi, TaxiComms.TaxiRideRequest rideRequest) {
+        System.out.println("I'm recharging. Other taxis can handle this...");
         return new Decision(false, true);
     }
 
@@ -67,16 +73,20 @@ public class Recharging implements TaxiState {
     public Boolean canRecharge(Taxi taxi, TaxiComms.TaxiRechargeRequest rechargeRequest) {
         Long timestamp = taxi.stateInfo.getTimestamp();
         if (timestamp == null) {
+            System.out.println("I have not yet created my request. Other taxi comes first...");
             return true;
         }
         District currentDistrict = District.fromCoordinate(taxi.getCurrentPosition());
         District otherTaxiDistrict = District.fromCoordinate(new Coordinate(rechargeRequest.getTaxiPosition()));
         if (!currentDistrict.equals(otherTaxiDistrict)) {
+            System.out.println("Recharge request " + rechargeRequest + " is for another recharge station...");
             return true;
         }
         if (rechargeRequest.getTimestamp() < timestamp) {
+            System.out.println("Recharge request " + rechargeRequest + " has a lower timestamp than mine...");
             return true;
         }
+        System.out.println("Recharge request " + rechargeRequest + " has a greater timestamp than mine. Waiting for me to finish recharging...");
         try {
             taxi.awaitChange();
         } catch (InterruptedException e) {
@@ -88,6 +98,7 @@ public class Recharging implements TaxiState {
 
     @Override
     public Boolean addTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        System.out.println("Cannot add taxi while recharging. Waiting...");
         try {
             taxi.awaitChange();
         } catch (InterruptedException e) {
@@ -99,6 +110,7 @@ public class Recharging implements TaxiState {
 
     @Override
     public Boolean removeTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        System.out.println("Cannot remove taxi while recharging. Waiting...");
         try {
             taxi.awaitChange();
         } catch (InterruptedException e) {

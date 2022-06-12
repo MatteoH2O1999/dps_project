@@ -63,11 +63,14 @@ public class Idle implements TaxiState {
         Coordinate rideStartingCoordinate = new Coordinate(rideRequest.getRideInfo().getRideStart());
         Coordinate currentTaxiPosition = taxi.getCurrentPosition();
         if (!District.fromCoordinate(rideStartingCoordinate).equals(District.fromCoordinate(currentTaxiPosition))) {
+            System.out.println("Request " + rideRequest + " is from another district. Other taxi can take care of it...");
             return new Decision(false, true);
         }
         if (rideRequest.getRideInfo().getRequestId() <= taxi.getCompletedElectionAck()) {
+            System.out.println("Request " + rideRequest + " is already been satisfied. Stopping the election...");
             return new Decision(true, true);
         }
+        System.out.println("Request will be served. Waiting for change...");
         try {
             taxi.awaitChange();
         } catch (InterruptedException e) {
@@ -79,17 +82,20 @@ public class Idle implements TaxiState {
 
     @Override
     public Boolean canRecharge(Taxi taxi, TaxiComms.TaxiRechargeRequest rechargeRequest) {
+        System.out.println("I'm idle. Recharge request " + rechargeRequest + " is granted...");
         return true;
     }
 
     @Override
     public Boolean addTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        System.out.println("I'm idle. Adding taxi " + taxiInfo + "...");
         taxi.addTaxi(taxiInfo);
         return true;
     }
 
     @Override
     public Boolean removeTaxi(Taxi taxi, TaxiInfo taxiInfo) {
+        System.out.println("I'm idle. Removing taxi " + taxiInfo + "...");
         taxi.removeTaxi(taxiInfo);
         return true;
     }
