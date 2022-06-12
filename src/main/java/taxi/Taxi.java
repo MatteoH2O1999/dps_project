@@ -312,7 +312,7 @@ public class Taxi extends Thread{
     }
 
     private synchronized void updateRequests() {
-        if (this.completedElectionAck == null) {
+        if ((this.completedElectionAck == null) || (this.requests == null)) {
             return;
         }
         this.requests.removeIf(rideRequest -> rideRequest.getRequestId() <= this.completedElectionAck);
